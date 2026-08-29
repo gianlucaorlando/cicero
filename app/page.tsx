@@ -6,6 +6,7 @@ import {
   ChevronRight,
   CloudRain,
   Coffee,
+  ExternalLink,
   LocateFixed,
   MapPin,
   Mic,
@@ -46,6 +47,25 @@ type Stop = {
   title: string;
   detail: string;
   kind: 'place' | 'coffee' | 'walk';
+  placeId?: string;
+  primaryType?: string;
+  address?: string;
+  lat?: number;
+  lng?: number;
+  googleMapsUri?: string | null;
+  source?: 'google_places';
+};
+
+type PlaceCandidate = {
+  id: string;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+  primaryType: string;
+  businessStatus: string | null;
+  googleMapsUri: string | null;
+  distanceMeters: number;
 };
 
 type Profile = {
@@ -73,6 +93,34 @@ const initialProfile: Profile = {
 
 const emptyPlan: Stop[] = [];
 
+function distanceMeters(from: { lat: number; lng: number }, to: { lat: number; lng: number }) {
+  const earthRadius = 6371000;
+  const radians = (value: number) => value * Math.PI / 180;
+  const dLat = radians(to.lat - from.lat);
+  const dLng = radians(to.lng - from.lng);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(radians(from.lat)) * Math.cos(radians(to.lat)) * Math.sin(dLng / 2) ** 2;
+  return Math.round(earthRadius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function humanDistance(value: number) {
+  return value < 1000 ? `${Math.max(10, Math.round(value / 10) * 10)} m` : `${(value / 1000).toFixed(1).replace('.', ',')} km`;
+}
+
+function nextStopTime(index: number) {
+  const date = new Date(Date.now() + (15 + index * 45) * 60_000);
+  return date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+}
+
+function priceLabel(value: string | null) {
+  return ({
+    PRICE_LEVEL_FREE: 'gratis',
+    PRICE_LEVEL_INEXPENSIVE: '€',
+    PRICE_LEVEL_MODERATE: '€€',
+    PRICE_LEVEL_EXPENSIVE: '€€€',
+    PRICE_LEVEL_VERY_EXPENSIVE: '€€€€',
+  } as Record<string, string>)[value || ''] || null;
+}
+
 function shiftTime(value: string, minutes: number) {
   const [hours, mins] = value.split(':').map(Number);
   const total = hours * 60 + mins + minutes;
@@ -82,6 +130,9 @@ function shiftTime(value: string, minutes: number) {
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [itinerary, setItinerary] = useState<Stop[]>(emptyPlan);
+  const [placeCandidates, setPlaceCandidates] = useState<PlaceCandidate[]>([]);
+  const [placesMode, setPlacesMode] = useState<'unknown' | 'ready' | 'missing' | 'error'>('unknown');
+  const [selectingPlace, setSelectingPlace] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
   const [city, setCity] = useState('Milano');
@@ -129,7 +180,7 @@ export default function Home() {
 
   useEffect(() => {
     messagesEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, [messages, thinking]);
+  }, [messages, thinking, placeCandidates]);
 
   function append(role: Message['role'], text: string, meta?: string) {
     const item: Message = { id: nextId.current++, role, text, meta };
@@ -144,30 +195,90 @@ export default function Home() {
     }, delay);
   }
 
-  function buildDemoPlan() {
-    setItinerary([
-      {
-        id: 'indoor',
-        time: '14:10',
-        title: 'Tappa indoor verificata',
-        detail: '8 min a piedi · 35 min',
-        kind: 'place',
-      },
-      {
-        id: 'culture',
-        time: '15:00',
-        title: 'Seconda tappa culturale',
-        detail: '6 min a piedi · 45 min',
-        kind: 'place',
-      },
-      {
-        id: 'coffee',
-        time: '15:55',
-        title: 'Caffè vicino al percorso',
-        detail: '3 min a piedi · €€',
-        kind: 'coffee',
-      },
-    ]);
+  async function searchPlaces(query: string, origin = coords) {
+    setThinking(true);
+    setPlaceCandidates([]);
+    try {
+      const response = await fetch('/api/places/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query,
+          lat: origin.lat,
+          lng: origin.lng,
+          radiusMeters: 1200,
+          openNow: true,
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (data.error === 'PLACES_NOT_CONFIGURED') {
+          setPlacesMode('missing');
+          append('assistant', 'Il collegamento con Google Places è pronto, ma manca ancora la chiave server. Finché non è attiva non invento nessun luogo.', 'Nessun POI generato');
+          return;
+        }
+        setPlacesMode('error');
+        append('assistant', 'Google Places non risponde correttamente in questo momento. Non aggiungo tappe non verificate.', 'Ricerca non riuscita');
+        return;
+      }
+
+      setPlacesMode('ready');
+      const candidates = (data.places || []).map((place: Omit<PlaceCandidate, 'distanceMeters'>) => ({
+        ...place,
+        distanceMeters: distanceMeters(origin, place),
+      }));
+      setPlaceCandidates(candidates);
+      append(
+        'assistant',
+        candidates.length
+          ? `Ho trovato ${candidates.length} opzioni aperte vicino al punto scelto. Sono risultati reali di Places: scegli quale aggiungere.`
+          : 'Non trovo luoghi aperti adatti vicino al punto scelto. Non aggiungo alternative inventate.',
+        'Ricerca Google Places completata',
+      );
+    } catch {
+      setPlacesMode('error');
+      append('assistant', 'Non riesco a raggiungere Places. Il tuo itinerario resta invariato.', 'Errore di connessione');
+    } finally {
+      setThinking(false);
+    }
+  }
+
+  async function addPlace(candidate: PlaceCandidate) {
+    setSelectingPlace(candidate.id);
+    try {
+      const response = await fetch(`/api/places/details?id=${encodeURIComponent(candidate.id)}`);
+      const data = await response.json();
+      if (!response.ok || !data.place) throw new Error('details unavailable');
+
+      const place = data.place;
+      const openLabel = place.openNow === true ? 'aperto ora' : place.openNow === false ? 'chiuso ora' : 'orario non confermato';
+      const price = priceLabel(place.priceLevel);
+      const rating = typeof place.rating === 'number' ? `${place.rating.toFixed(1)} (${place.userRatingCount || 0})` : null;
+      const detail = [humanDistance(candidate.distanceMeters), openLabel, price, rating].filter(Boolean).join(' · ');
+      const stop: Stop = {
+        id: candidate.id,
+        placeId: candidate.id,
+        time: nextStopTime(itinerary.length),
+        title: place.name,
+        detail,
+        kind: candidate.primaryType === 'cafe' || candidate.primaryType === 'coffee_shop' ? 'coffee' : 'place',
+        primaryType: candidate.primaryType,
+        address: place.address,
+        lat: place.lat,
+        lng: place.lng,
+        googleMapsUri: place.googleMapsUri,
+        source: 'google_places',
+      };
+
+      setItinerary((current) => current.some((item) => item.placeId === candidate.id) ? current : [...current, stop]);
+      setPlaceCandidates([]);
+      append('assistant', `Ho aggiunto ${place.name} senza modificare le altre tappe. Orari e stato sono stati ricontrollati adesso.`, 'Itinerario aggiornato con Place ID');
+    } catch {
+      append('assistant', `Non riesco a verificare i dettagli di ${candidate.name}; non l’ho aggiunto.`, 'Itinerario invariato');
+    } finally {
+      setSelectingPlace(null);
+    }
   }
 
   function handlePrompt(prompt: string) {
@@ -175,11 +286,7 @@ export default function Home() {
     append('user', prompt);
 
     if (prompt === 'Cosa faccio adesso?') {
-      buildDemoPlan();
-      reply(
-        'Ti preparo due ore compatte e quasi tutte al coperto. In questa demo Places non è collegato: lascio i nomi come segnaposto invece di inventare locali o orari.',
-        '3 tappe · aggiornamento incrementale',
-      );
+      void searchPlaces('luoghi interessanti da visitare');
       return;
     }
 
@@ -189,11 +296,7 @@ export default function Home() {
       return;
     }
 
-    setItinerary((current) => current.map((stop, index) => ({
-      ...stop,
-      detail: index < 2 ? `${stop.detail.split(' · ')[0]} · al coperto` : stop.detail,
-    })));
-    reply('Ho adattato solo le tappe esposte alla pioggia; il resto del percorso non cambia.', 'Meteo ricontrollato ora');
+    void searchPlaces('musei e attività al coperto');
   }
 
   function interpretMessage(value: string) {
@@ -201,22 +304,30 @@ export default function Home() {
     append('user', value);
 
     if (normalized.includes('togli') || normalized.includes('rimuovi')) {
-      setItinerary((current) => current.filter((stop) => stop.id !== 'culture'));
-      reply('Fatto: ho tolto solo la seconda tappa e avvicinato il caffè. Il resto rimane com’era.', 'Itinerario aggiornato, non rigenerato');
+      setItinerary((current) => {
+        const museumIndex = normalized.includes('muse') ? current.findIndex((stop) => stop.primaryType?.includes('museum')) : -1;
+        const index = museumIndex >= 0 ? museumIndex : current.length - 1;
+        return index >= 0 ? current.filter((_, itemIndex) => itemIndex !== index) : current;
+      });
+      reply('Fatto: ho rimosso solo la tappa indicata. Il resto rimane com’era.', 'Itinerario aggiornato, non rigenerato');
       return;
     }
 
     if (normalized.includes('caff')) {
-      setItinerary((current) => {
-        const withoutCoffee = current.filter((stop) => stop.kind !== 'coffee');
-        const insertAt = Math.min(2, withoutCoffee.length);
-        return [
-          ...withoutCoffee.slice(0, insertAt),
-          { id: 'coffee', time: '15:55', title: 'Caffè vicino alla seconda tappa', detail: 'da verificare con Places · €€', kind: 'coffee' },
-          ...withoutCoffee.slice(insertAt),
-        ];
-      });
-      reply('Ho inserito il caffè vicino alla seconda tappa, senza toccare il resto. Il nome resta in sospeso finché Places non conferma un posto adatto.', 'Modifica locale applicata');
+      const origin = normalized.includes('second') && itinerary[1]?.lat != null && itinerary[1]?.lng != null
+        ? { lat: itinerary[1].lat!, lng: itinerary[1].lng! }
+        : coords;
+      void searchPlaces('caffè', origin);
+      return;
+    }
+
+    if (normalized.includes('ristor') || normalized.includes('pranzo') || normalized.includes('cena') || normalized.includes('mang')) {
+      void searchPlaces(profile.noFish ? 'ristorante senza pesce' : 'ristorante');
+      return;
+    }
+
+    if (normalized.includes('muse') || normalized.includes('mostra') || normalized.includes('arte')) {
+      void searchPlaces('museo');
       return;
     }
 
@@ -226,8 +337,7 @@ export default function Home() {
       return;
     }
 
-    if (itinerary.length === 0) buildDemoPlan();
-    reply('Posso già mostrarti il flusso: prova “togli la seconda tappa”, “aggiungi un caffè” oppure “sposta tutto di un’ora”.', 'Demo conversazionale');
+    reply('Per la demo Places prova “trova un caffè”, “cerco un museo” o “un ristorante per cena”. Aggiungerò solo risultati verificati.', 'Ricerca Places disponibile');
   }
 
   function submitMessage(event: FormEvent) {
@@ -391,11 +501,39 @@ export default function Home() {
             </article>
           ))}
 
+          {placeCandidates.length > 0 && (
+            <article className="places-card" aria-label="Risultati Google Places">
+              <div className="places-card-head">
+                <div><span>Vicino al punto scelto</span><strong>Scegli una tappa</strong></div>
+                <Badge variant="outline">live</Badge>
+              </div>
+              <div className="place-options">
+                {placeCandidates.map((place) => (
+                  <div className="place-option" key={place.id}>
+                    <button type="button" onClick={() => void addPlace(place)} disabled={selectingPlace !== null}>
+                      <span className="place-option-copy">
+                        <strong>{place.name}</strong>
+                        <small>{humanDistance(place.distanceMeters)} · {place.address}</small>
+                      </span>
+                      <span className="place-add">{selectingPlace === place.id ? <LocateFixed className="spin" /> : '+'}</span>
+                    </button>
+                    {place.googleMapsUri && (
+                      <a href={place.googleMapsUri} target="_blank" rel="noreferrer" aria-label={`Apri ${place.name} su Google Maps`}>
+                        <ExternalLink />
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <p className="google-attribution">Dati luogo forniti da <strong>Google Maps</strong></p>
+            </article>
+          )}
+
           {itinerary.length > 0 && (
             <article className="itinerary-card" aria-label="Itinerario corrente">
               <div className="itinerary-title">
                 <div><span>Il piano vivo</span><strong>{itinerary.length} tappe · circa 2 ore</strong></div>
-                <Badge variant="outline">demo</Badge>
+                <Badge variant="outline">{itinerary.some((stop) => stop.source === 'google_places') ? 'live' : 'demo'}</Badge>
               </div>
               <ol>
                 {itinerary.map((stop, index) => (
@@ -404,11 +542,18 @@ export default function Home() {
                     <span className={`stop-icon ${stop.kind}`}>
                       {stop.kind === 'coffee' ? <Coffee /> : stop.kind === 'walk' ? <Route /> : index + 1}
                     </span>
-                    <div><strong>{stop.title}</strong><span>{stop.detail}</span></div>
+                    <div>
+                      {stop.googleMapsUri ? <a href={stop.googleMapsUri} target="_blank" rel="noreferrer"><strong>{stop.title}</strong><ExternalLink /></a> : <strong>{stop.title}</strong>}
+                      <span>{stop.detail}</span>
+                    </div>
                   </li>
                 ))}
               </ol>
-              <p className="data-warning"><Umbrella /> I nomi reali appariranno solo dopo la verifica con Places.</p>
+              {itinerary.some((stop) => stop.source === 'google_places') ? (
+                <p className="google-attribution itinerary-attribution">Dati luogo forniti da <strong>Google Maps</strong> · verificati all’inserimento</p>
+              ) : (
+                <p className="data-warning"><Umbrella /> I nomi reali appariranno solo dopo la verifica con Places.</p>
+              )}
             </article>
           )}
 
@@ -423,6 +568,7 @@ export default function Home() {
 
         <div className="quick-prompts" aria-label="Suggerimenti rapidi">
           <button type="button" onClick={() => handlePrompt('Cosa faccio adesso?')}>Cosa faccio adesso?</button>
+          <button type="button" onClick={() => { append('user', 'Trova un caffè qui vicino'); void searchPlaces('caffè'); }}>Caffè qui vicino</button>
           <button type="button" onClick={() => handlePrompt('Ritmo tranquillo')}>Ritmo tranquillo</button>
           <button type="button" onClick={() => handlePrompt('Evita la pioggia')}>Evita la pioggia</button>
         </div>
@@ -436,7 +582,9 @@ export default function Home() {
             <Send />
           </Button>
         </form>
-        <p className="demo-note">Demo interattiva · Places e LLM non ancora collegati</p>
+        <p className="demo-note">
+          {placesMode === 'ready' ? 'Google Places connesso · LLM in modalità demo' : placesMode === 'missing' ? 'Google Places pronto · chiave server richiesta' : placesMode === 'error' ? 'Google Places temporaneamente non disponibile' : 'Google Places integrato · attivazione server richiesta'}
+        </p>
       </section>
 
       <Sheet open={profileOpen} onOpenChange={setProfileOpen}>

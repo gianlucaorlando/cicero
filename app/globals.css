@@ -418,6 +418,50 @@ h1 {
 }
 .trust-note svg { width: 12px; color: #5f8d67; }
 
+.places-card {
+  margin: 15px 0 3px 40px;
+  padding: 14px;
+  border: 1px solid #cdd4c7;
+  border-radius: 18px;
+  background: #fbfcf7;
+  box-shadow: 0 7px 22px rgba(55,66,49,.08);
+  animation: rise .4s ease-out both;
+}
+.places-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.places-card-head > div { display: flex; flex-direction: column; }
+.places-card-head span { color: #687760; font-size: 10px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.places-card-head strong { color: #313a2e; font-size: 13px; }
+.places-card-head [data-slot="badge"] { height: 18px; border-color: #bfcbb8; color: #62715b; font-size: 9px; }
+.place-options { display: flex; flex-direction: column; gap: 7px; }
+.place-option { display: grid; grid-template-columns: 1fr 34px; gap: 4px; }
+.place-option > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  min-height: 50px;
+  padding: 8px 8px 8px 10px;
+  border: 1px solid #dbe1d6;
+  border-radius: 13px;
+  background: white;
+  color: #354031;
+  text-align: left;
+  cursor: pointer;
+}
+.place-option > button:active { background: #f0f4eb; transform: scale(.99); }
+.place-option > button:disabled { cursor: wait; opacity: .7; }
+.place-option-copy { display: flex; min-width: 0; flex-direction: column; }
+.place-option-copy strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.place-option-copy small { margin-top: 2px; overflow: hidden; color: #7d8878; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.place-add { display: grid; place-items: center; flex: 0 0 25px; width: 25px; height: 25px; border-radius: 9px; background: #71806a; color: white; font-size: 17px; line-height: 1; }
+.place-add svg { width: 12px; }
+.place-option > a { display: grid; place-items: center; min-height: 50px; border-radius: 11px; color: #7b8874; }
+.place-option > a:active { background: #ebf0e6; }
+.place-option > a svg { width: 14px; }
+.google-attribution { margin: 10px 0 0 !important; color: #7d8579; font-size: 9px !important; line-height: 1.3 !important; }
+.google-attribution strong { color: #4f5c49; font-weight: 720; }
+
 .itinerary-card {
   margin: 15px 0 3px 40px;
   padding: 14px;
@@ -442,8 +486,11 @@ h1 {
 .itinerary-card li > div { display: flex; flex-direction: column; padding: 2px 0 10px 8px; }
 .itinerary-card li strong { color: #3e3128; font-size: 12px; line-height: 1.25; }
 .itinerary-card li span { color: #8a7d71; font-size: 10px; }
+.itinerary-card li > div > a { display: inline-flex; align-items: center; gap: 4px; color: inherit; text-decoration: none; }
+.itinerary-card li > div > a svg { width: 10px; color: #8d7d70; }
 .data-warning { display: flex; gap: 6px; margin: 2px 0 0 !important; padding-top: 9px; border-top: 1px solid #eadfce; color: #8a796c; font-size: 10px !important; line-height: 1.35 !important; }
 .data-warning svg { flex: 0 0 auto; width: 12px; }
+.itinerary-attribution { padding-top: 9px; border-top: 1px solid #eadfce; }
 
 .thinking-message { align-items: center; margin-top: 14px; }
 .thinking-dots { display: flex; gap: 4px; padding: 10px 12px; border-radius: 15px 15px 15px 5px; background: #f0e5d5; }
