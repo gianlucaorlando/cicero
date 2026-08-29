@@ -56,7 +56,7 @@ const initialMessages: Message[] = [
   {
     id: 1,
     role: 'assistant',
-    text: 'Sei nel centro di Roma. Dimmi quanto tempo hai: terrò insieme meteo, distanze e ciò che preferisci.',
+    text: 'Sei nel centro di Milano. Dimmi quanto tempo hai: terrò insieme meteo, distanze e ciò che preferisci.',
     meta: 'Posizione e meteo aggiornati ora',
   },
 ];
@@ -88,10 +88,10 @@ export default function Home() {
   const [itinerary, setItinerary] = useState<Stop[]>(emptyPlan);
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
-  const [city, setCity] = useState('Roma');
-  const [cityInput, setCityInput] = useState('Roma');
+  const [city, setCity] = useState('Milano');
+  const [cityInput, setCityInput] = useState('Milano');
   const [locationLabel, setLocationLabel] = useState('Centro');
-  const [coords, setCoords] = useState({ lat: 41.8992, lng: 12.4786 });
+  const [coords, setCoords] = useState({ lat: 45.4642, lng: 9.19 });
   const [weather, setWeather] = useState('meteo in arrivo');
   const [profile, setProfile] = useState<Profile>(initialProfile);
   const [profileOpen, setProfileOpen] = useState(false);
