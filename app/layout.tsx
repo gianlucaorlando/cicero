@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://cicero.openai.site'),
+  metadataBase: new URL('https://cicero-travel-companion.hiddenstat.chatgpt.site'),
   title: 'Cicero — il viaggio, in conversazione',
   description: 'Un compagno di viaggio che conosce il contesto, ricorda le tue preferenze e modifica il percorso mentre ne parlate.',
   applicationName: 'Cicero',
