@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import {
   Check,
   ChevronRight,
@@ -9,8 +9,10 @@ import {
   LocateFixed,
   MapPin,
   Mic,
+  Move,
   Navigation,
   Route,
+  Search,
   Send,
   SlidersHorizontal,
   Sparkles,
@@ -29,6 +31,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Switch } from '@/components/ui/switch';
+import { MapPicker } from '@/components/map-picker';
 
 type Message = {
   id: number;
@@ -70,13 +73,6 @@ const initialProfile: Profile = {
 
 const emptyPlan: Stop[] = [];
 
-function mapEmbed(lat: number, lng: number) {
-  const dx = 0.011;
-  const dy = 0.007;
-  const bbox = [lng - dx, lat - dy, lng + dx, lat + dy].join('%2C');
-  return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`;
-}
-
 function shiftTime(value: string, minutes: number) {
   const [hours, mins] = value.split(':').map(Number);
   const total = hours * 60 + mins + minutes;
@@ -90,6 +86,7 @@ export default function Home() {
   const [thinking, setThinking] = useState(false);
   const [city, setCity] = useState('Milano');
   const [cityInput, setCityInput] = useState('Milano');
+  const [addressInput, setAddressInput] = useState('');
   const [locationLabel, setLocationLabel] = useState('Centro');
   const [coords, setCoords] = useState({ lat: 45.4642, lng: 9.19 });
   const [weather, setWeather] = useState('meteo in arrivo');
@@ -100,8 +97,6 @@ export default function Home() {
   const [mapOpen, setMapOpen] = useState(true);
   const nextId = useRef(2);
   const messagesEnd = useRef<HTMLDivElement>(null);
-
-  const mapUrl = useMemo(() => mapEmbed(coords.lat, coords.lng), [coords]);
 
   useEffect(() => {
     const saved = window.localStorage.getItem('cicero-profile');
@@ -265,26 +260,53 @@ export default function Home() {
     );
   }
 
-  async function changeCity(event: FormEvent) {
-    event.preventDefault();
-    const query = cityInput.trim();
+  async function findLocation(query: string, closeSheet = false) {
     if (!query) return;
     setLocating(true);
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`);
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=1&q=${encodeURIComponent(query)}`);
       const [result] = await response.json();
       if (!result) throw new Error('not found');
       setCoords({ lat: Number(result.lat), lng: Number(result.lon) });
-      setCity(query);
-      setLocationLabel('centro città');
-      setLocationOpen(false);
-      setItinerary([]);
-      append('assistant', `Siamo a ${query}. Ho azzerato solo le tappe della città precedente; le tue preferenze restano memorizzate.`, 'Mappa aggiornata');
+      const nextCity = result.address?.city || result.address?.town || result.address?.municipality || city;
+      const nextLabel = result.display_name?.split(',')[0] || query;
+      setCity(nextCity);
+      setLocationLabel(nextLabel);
+      setAddressInput(nextLabel);
+      if (closeSheet) setLocationOpen(false);
+      append('assistant', `Ho spostato il punto di partenza su ${nextLabel}. Le tappe esistenti restano intatte.`, 'Pin e contesto aggiornati');
     } catch {
-      setLocationOpen(false);
+      if (closeSheet) setLocationOpen(false);
       reply(`Non trovo “${query}” con sufficiente certezza. Prova con città e Paese.`);
     } finally {
       setLocating(false);
+    }
+  }
+
+  function changeCity(event: FormEvent) {
+    event.preventDefault();
+    void findLocation(cityInput.trim(), true);
+  }
+
+  function searchAddress(event: FormEvent) {
+    event.preventDefault();
+    void findLocation(addressInput.trim());
+  }
+
+  async function movePin(next: { lat: number; lng: number }) {
+    setCoords(next);
+    setLocationLabel('pin spostato');
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&addressdetails=1&lat=${next.lat}&lon=${next.lng}`);
+      const result = await response.json();
+      const nextLabel = result.name || result.address?.road || result.address?.pedestrian || result.address?.neighbourhood || 'pin spostato';
+      const nextCity = result.address?.city || result.address?.town || result.address?.municipality;
+      setLocationLabel(nextLabel);
+      setAddressInput(nextLabel);
+      if (nextCity) setCity(nextCity);
+      append('assistant', `Partiamo da ${nextLabel}. Ho lasciato le tappe intatte; tempi e distanze useranno questo nuovo punto.`, 'Pin spostato sulla mappa');
+    } catch {
+      append('assistant', 'Ho aggiornato il punto di partenza alle coordinate del pin. L’indirizzo non è disponibile.', 'Coordinate aggiornate');
     }
   }
 
@@ -295,7 +317,7 @@ export default function Home() {
   return (
     <main className={`app-shell ${mapOpen ? '' : 'map-collapsed'}`}>
       <section className="map-stage" aria-label="Mappa dell’itinerario">
-        <iframe className="map-frame" title={`Mappa di ${city}`} src={mapUrl} loading="eager" />
+        <MapPicker coords={coords} onChange={movePin} />
         <div className="map-wash" aria-hidden="true" />
 
         <header className="topbar">
@@ -316,6 +338,21 @@ export default function Home() {
             {weather.includes('piove') ? <CloudRain /> : <Sun />} {weather}
           </Badge>
         </div>
+
+        <form className="map-search" onSubmit={searchAddress}>
+          <Search aria-hidden="true" />
+          <Input
+            value={addressInput}
+            onChange={(event) => setAddressInput(event.target.value)}
+            placeholder="Inserisci posizione o indirizzo"
+            aria-label="Posizione o indirizzo"
+            enterKeyHint="search"
+          />
+          <Button type="submit" size="icon" aria-label="Cerca sulla mappa" disabled={!addressInput.trim() || locating}>
+            {locating ? <LocateFixed className="spin" /> : <ChevronRight />}
+          </Button>
+          <span className="map-search-hint"><Move /> Tieni premuto e trascina il pin</span>
+        </form>
 
         {itinerary.length > 0 && (
           <div className="route-summary">
