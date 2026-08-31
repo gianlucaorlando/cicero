@@ -337,7 +337,12 @@ export default function Home() {
       return;
     }
 
-    reply('Per la demo Places prova “trova un caffè”, “cerco un museo” o “un ristorante per cena”. Aggiungerò solo risultati verificati.', 'Ricerca Places disponibile');
+    reply(
+      itinerary.length
+        ? 'Certo. Posso aggiungere una tappa vicino al percorso, sostituirne una o sistemare gli orari. Cosa vuoi cambiare?'
+        : `Dimmi cosa ti piacerebbe fare e quanto tempo hai: parto da ${locationLabel} e cerco qualcosa di adatto qui vicino.`,
+      itinerary.length ? `${itinerary.length} tappe nel percorso` : `${city} · partenza da ${locationLabel}`,
+    );
   }
 
   function submitMessage(event: FormEvent) {
