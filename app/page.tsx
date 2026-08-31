@@ -7,6 +7,8 @@ import {
   CloudRain,
   Coffee,
   ExternalLink,
+  LogIn,
+  LogOut,
   LocateFixed,
   MapPin,
   Mic,
@@ -19,6 +21,7 @@ import {
   Sparkles,
   Sun,
   Umbrella,
+  UserRound,
   X,
 } from 'lucide-react';
 
@@ -34,6 +37,13 @@ import {
 } from '@/components/ui/sheet';
 import { Switch } from '@/components/ui/switch';
 import { MapPicker } from '@/components/map-picker';
+import { useAuth0 } from '@/hooks/use-auth0';
+import {
+  createEmptyProfile,
+  normalizeProfile,
+  type PreferenceCategory,
+  type Profile,
+} from '@/lib/profile';
 
 type Message = {
   id: number;
@@ -69,18 +79,7 @@ type PlaceCandidate = {
   distanceMeters: number;
 };
 
-type PreferenceCategory = 'cafe' | 'evening' | 'museum' | 'restaurant';
-
-type LearnedPreferences = Record<PreferenceCategory, string[]>;
 type ManualPreferenceKey = 'avoidQueues' | 'markets' | 'noFish' | 'slowPace';
-
-type Profile = {
-  slowPace: boolean;
-  avoidQueues: boolean;
-  noFish: boolean;
-  markets: boolean;
-  learned: LearnedPreferences;
-};
 
 type PendingSearch = {
   kind: PreferenceCategory;
@@ -98,19 +97,6 @@ const initialMessages: Message[] = [
     meta: 'Posizione e meteo aggiornati ora',
   },
 ];
-
-const initialProfile: Profile = {
-  slowPace: false,
-  avoidQueues: false,
-  noFish: false,
-  markets: false,
-  learned: {
-    cafe: [],
-    evening: [],
-    museum: [],
-    restaurant: [],
-  },
-};
 
 const PROFILE_STORAGE_KEY = 'cicero-profile-v2';
 
@@ -196,6 +182,13 @@ function extractSearchRequests(value: string): SearchRequest[] {
 }
 
 export default function Home() {
+  const {
+    status: authStatus,
+    user: authUser,
+    login: loginWithAuth0,
+    logout: logoutFromAuth0,
+    getAccessToken,
+  } = useAuth0();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [itinerary, setItinerary] = useState<Stop[]>(emptyPlan);
   const [placeCandidates, setPlaceCandidates] = useState<PlaceCandidate[]>([]);
@@ -211,44 +204,158 @@ export default function Home() {
   const [locationLabel, setLocationLabel] = useState('Centro');
   const [coords, setCoords] = useState({ lat: 45.4642, lng: 9.19 });
   const [weather, setWeather] = useState('meteo in arrivo');
-  const [profile, setProfile] = useState<Profile>(initialProfile);
+  const [profile, setProfile] = useState<Profile>(() => createEmptyProfile());
+  const [profileReady, setProfileReady] = useState(false);
+  const [profileStatus, setProfileStatus] = useState<'error' | 'loading' | 'saved' | 'saving' | 'signed-out' | 'unconfigured'>('loading');
   const [profileOpen, setProfileOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
   const [locating, setLocating] = useState(false);
   const [mapOpen, setMapOpen] = useState(true);
   const nextId = useRef(2);
   const messagesEnd = useRef<HTMLDivElement>(null);
-  const activePreferenceCount = [profile.slowPace, profile.avoidQueues, profile.noFish, profile.markets].filter(Boolean).length
+  const lastPersistedProfile = useRef<string | null>(null);
+  const profileSyncEnabled = useRef(false);
+  const activePreferenceCount = [profile.slowPace, profile.avoidQueues].filter(Boolean).length
     + Object.values(profile.learned).reduce((total, values) => total + values.length, 0);
+  const profileEditable = profileReady
+    && (authStatus === 'authenticated' || authStatus === 'unconfigured')
+    && profileStatus !== 'signed-out';
+  const profileDisplayName = authUser?.name || authUser?.nickname || authUser?.email || 'Il tuo profilo';
+  const profileInitials = authStatus === 'authenticated'
+    ? profileDisplayName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
+    : '';
+  const profileStatusLabel = profileStatus === 'saved'
+    ? 'Sincronizzato con il tuo profilo'
+    : profileStatus === 'saving'
+      ? 'Salvataggio sul profilo…'
+      : profileStatus === 'loading'
+        ? 'Carico il tuo profilo…'
+        : profileStatus === 'signed-out'
+          ? 'Accedi per sincronizzare le preferenze'
+          : profileStatus === 'unconfigured'
+            ? 'Auth0 deve ancora essere collegato'
+            : 'Preferenze non sincronizzate';
 
   useEffect(() => {
-    const saved = window.localStorage.getItem(PROFILE_STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved) as Partial<Profile>;
-        const learned = parsed.learned as Partial<LearnedPreferences> | undefined;
-        setProfile({
-          slowPace: parsed.slowPace === true,
-          avoidQueues: parsed.avoidQueues === true,
-          noFish: parsed.noFish === true,
-          markets: parsed.markets === true,
-          learned: {
-            cafe: Array.isArray(learned?.cafe) ? learned.cafe.slice(0, 4) : [],
-            evening: Array.isArray(learned?.evening) ? learned.evening.slice(0, 4) : [],
-            museum: Array.isArray(learned?.museum) ? learned.museum.slice(0, 4) : [],
-            restaurant: Array.isArray(learned?.restaurant) ? learned.restaurant.slice(0, 4) : [],
-          },
-        });
-      } catch { /* ignore invalid local data */ }
-    }
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => undefined);
     }
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
-  }, [profile]);
+    let active = true;
+    profileSyncEnabled.current = false;
+    lastPersistedProfile.current = null;
+
+    if (authStatus === 'loading') {
+      setProfileStatus('loading');
+      setProfileReady(false);
+      return () => { active = false; };
+    }
+    if (authStatus === 'error') {
+      setProfileStatus('error');
+      setProfileReady(true);
+      return () => { active = false; };
+    }
+    if (authStatus === 'anonymous') {
+      setProfileStatus('signed-out');
+      setProfileReady(true);
+      return () => { active = false; };
+    }
+
+    async function loadProfile() {
+      try {
+        const token = authStatus === 'authenticated' ? await getAccessToken() : null;
+        if (authStatus === 'authenticated' && !token) {
+          if (active) setProfileStatus('signed-out');
+          return;
+        }
+        const response = await fetch('/api/profile/preferences', {
+          cache: 'no-store',
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
+        if (response.status === 401) {
+          if (!active) return;
+          setProfileStatus('signed-out');
+          setProfileReady(true);
+          return;
+        }
+        if (!response.ok) throw new Error('profile unavailable');
+
+        const data = await response.json() as { profile?: unknown; exists?: boolean };
+        let nextProfile = normalizeProfile(data.profile);
+        const localProfile = window.localStorage.getItem(PROFILE_STORAGE_KEY);
+
+        if (!data.exists && localProfile) {
+          try {
+            nextProfile = normalizeProfile(JSON.parse(localProfile));
+          } catch { /* an invalid legacy profile is ignored */ }
+        }
+
+        if (!active) return;
+        profileSyncEnabled.current = true;
+        lastPersistedProfile.current = data.exists ? JSON.stringify(nextProfile) : null;
+        setProfile(nextProfile);
+        setProfileReady(true);
+        setProfileStatus(data.exists ? 'saved' : 'saving');
+        if (data.exists) window.localStorage.removeItem(PROFILE_STORAGE_KEY);
+      } catch {
+        if (!active) return;
+        setProfileStatus('error');
+        setProfileReady(true);
+      }
+    }
+
+    void loadProfile();
+    return () => { active = false; };
+  }, [authStatus, getAccessToken]);
+
+  useEffect(() => {
+    if (!profileReady || !profileSyncEnabled.current) return;
+
+    const serialized = JSON.stringify(profile);
+    if (serialized === lastPersistedProfile.current) return;
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setProfileStatus('saving');
+      try {
+        const token = authStatus === 'authenticated' ? await getAccessToken() : null;
+        if (authStatus === 'authenticated' && !token) {
+          profileSyncEnabled.current = false;
+          setProfileStatus('signed-out');
+          return;
+        }
+        const response = await fetch('/api/profile/preferences', {
+          method: 'PUT',
+          headers: token
+            ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+            : { 'Content-Type': 'application/json' },
+          body: serialized,
+          signal: controller.signal,
+        });
+        if (response.status === 401) {
+          profileSyncEnabled.current = false;
+          setProfileStatus('signed-out');
+          return;
+        }
+        if (!response.ok) throw new Error('profile save failed');
+
+        const data = await response.json() as { profile?: unknown };
+        lastPersistedProfile.current = JSON.stringify(normalizeProfile(data.profile));
+        window.localStorage.removeItem(PROFILE_STORAGE_KEY);
+        setProfileStatus('saved');
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setProfileStatus('error');
+      }
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [authStatus, getAccessToken, profile, profileReady]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -670,7 +777,7 @@ export default function Home() {
             <span>Cicero</span>
           </a>
           <Button className="profile-button" variant="outline" size="icon" aria-label="Apri il profilo" onClick={() => setProfileOpen(true)}>
-            GO
+            {profileInitials || <UserRound />}
           </Button>
         </header>
 
@@ -828,11 +935,37 @@ export default function Home() {
             <SheetTitle>Le cose che Cicero sa di te</SheetTitle>
             <SheetDescription>Le salvi una volta. Vengono considerate in ogni nuovo viaggio.</SheetDescription>
           </SheetHeader>
+          {authStatus === 'authenticated' ? (
+            <section className="auth-card signed-in" aria-label="Profilo Auth0">
+              <span className="auth-avatar">{profileInitials || <UserRound />}</span>
+              <span className="auth-copy">
+                <strong>{profileDisplayName}</strong>
+                <small>{authUser?.email || 'Profilo Auth0 collegato'}</small>
+              </span>
+              <Button type="button" variant="ghost" size="icon" aria-label="Esci dal profilo" onClick={() => void logoutFromAuth0()}>
+                <LogOut />
+              </Button>
+            </section>
+          ) : authStatus !== 'unconfigured' ? (
+            <section className="auth-card" aria-label="Accesso al profilo">
+              <span className="auth-avatar"><UserRound /></span>
+              <span className="auth-copy">
+                <strong>{authStatus === 'unconfigured' ? 'Accesso in configurazione' : 'Porta le preferenze con te'}</strong>
+                <small>Google, Facebook, TikTok oppure email e password</small>
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                disabled={authStatus === 'loading' || authStatus === 'unconfigured'}
+                onClick={() => void loginWithAuth0()}
+              >
+                <LogIn /> Accedi
+              </Button>
+            </section>
+          ) : null}
           <div className="preference-list">
-            <Preference label="Ritmo tranquillo" detail="Meno tappe, più margine" checked={profile.slowPace} onChange={() => toggleProfile('slowPace')} />
-            <Preference label="Evita le code" detail="Orari alternativi quando possibile" checked={profile.avoidQueues} onChange={() => toggleProfile('avoidQueues')} />
-            <Preference label="Non mangio pesce" detail="Escluso dai suggerimenti" checked={profile.noFish} onChange={() => toggleProfile('noFish')} />
-            <Preference label="Mi piacciono i mercati" detail="Priorità a esperienze locali" checked={profile.markets} onChange={() => toggleProfile('markets')} />
+            <Preference label="Ritmo tranquillo" detail="Meno tappe, più margine" checked={profile.slowPace} disabled={!profileEditable} onChange={() => toggleProfile('slowPace')} />
+            <Preference label="Evita le code" detail="Orari alternativi quando possibile" checked={profile.avoidQueues} disabled={!profileEditable} onChange={() => toggleProfile('avoidQueues')} />
           </div>
           <section className="learned-memory" aria-labelledby="learned-memory-title">
             <div className="learned-memory-head">
@@ -843,7 +976,7 @@ export default function Home() {
               <div className="memory-chips">
                 {(Object.entries(profile.learned) as Array<[PreferenceCategory, string[]]>).flatMap(([kind, values]) =>
                   values.map((value) => (
-                    <button className="memory-chip" type="button" key={`${kind}-${value}`} onClick={() => forgetPreference(kind, value)} aria-label={`Rimuovi ${value} da ${preferenceCategoryLabels[kind]}`}>
+                    <button className="memory-chip" type="button" key={`${kind}-${value}`} disabled={!profileEditable} onClick={() => forgetPreference(kind, value)} aria-label={`Rimuovi ${value} da ${preferenceCategoryLabels[kind]}`}>
                       <span><small>{preferenceCategoryLabels[kind]}</small>{value}</span>
                       <X aria-hidden="true" />
                     </button>
@@ -854,7 +987,10 @@ export default function Home() {
               <p className="memory-empty">Quando mi dirai cosa preferisci, lo troverai qui.</p>
             )}
           </section>
-          <p className="storage-note"><Check /> Salvato su questo dispositivo</p>
+          <p className="storage-note">
+            {profileStatus === 'saved' ? <Check /> : profileStatus === 'loading' || profileStatus === 'saving' ? <LocateFixed className="spin" /> : <X />}
+            {profileStatusLabel}
+          </p>
         </SheetContent>
       </Sheet>
 
@@ -876,11 +1012,11 @@ export default function Home() {
   );
 }
 
-function Preference({ label, detail, checked, onChange }: { label: string; detail: string; checked: boolean; onChange: () => void }) {
+function Preference({ label, detail, checked, disabled, onChange }: { label: string; detail: string; checked: boolean; disabled?: boolean; onChange: () => void }) {
   return (
-    <label className="preference-row">
+    <label className={`preference-row ${disabled ? 'disabled' : ''}`}>
       <span><strong>{label}</strong><small>{detail}</small></span>
-      <Switch checked={checked} onCheckedChange={onChange} aria-label={label} />
+      <Switch checked={checked} disabled={disabled} onCheckedChange={onChange} aria-label={label} />
     </label>
   );
 }
