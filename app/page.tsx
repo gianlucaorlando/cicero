@@ -88,6 +88,8 @@ type PendingSearch = {
   openNow: boolean;
 };
 
+type SearchRequest = Pick<PendingSearch, 'kind' | 'openNow'>;
+
 const initialMessages: Message[] = [
   {
     id: 1,
@@ -163,6 +165,36 @@ function isAffirmingPreferenceAnswer(value: string) {
   return /^(sì|si|va bene|confermo|come sempre|le stesse|gli stessi|tienile|tienili)$/i.test(value.trim());
 }
 
+function firstTextIndex(value: string, terms: string[]) {
+  return terms.reduce((closest, term) => {
+    const index = value.indexOf(term);
+    return index >= 0 && (closest < 0 || index < closest) ? index : closest;
+  }, -1);
+}
+
+function extractSearchRequests(value: string): SearchRequest[] {
+  const foodPreferenceOnly = /(non mangio|non posso mangiare|evita|senza).{0,12}pesce/.test(value)
+    && !value.includes('ristor')
+    && !value.includes('pranzo')
+    && !/\bcena\b/.test(value);
+  const restaurantIndex = foodPreferenceOnly ? -1 : firstTextIndex(value, ['ristor', 'pranzo', 'mang', 'cena']);
+  const cafeIndex = firstTextIndex(value, ['caff']);
+  const museumIndex = firstTextIndex(value, ['muse', 'mostra', 'arte']);
+  const explicitEveningIndex = firstTextIndex(value, ['dopocena', 'dopo cena', 'intratten', 'musica dal vivo', 'concerto', 'teatro', 'cocktail', 'discoteca', 'ballare']);
+  const genericEveningIndex = restaurantIndex < 0 ? firstTextIndex(value, ['serata', 'stasera']) : -1;
+  const eveningIndex = explicitEveningIndex >= 0 ? explicitEveningIndex : genericEveningIndex;
+
+  return [
+    { kind: 'restaurant' as const, index: restaurantIndex, openNow: !/(cena|stasera|domani)/.test(value) },
+    { kind: 'cafe' as const, index: cafeIndex, openNow: true },
+    { kind: 'museum' as const, index: museumIndex, openNow: true },
+    { kind: 'evening' as const, index: eveningIndex, openNow: false },
+  ]
+    .filter((request) => request.index >= 0)
+    .sort((left, right) => left.index - right.index)
+    .map(({ kind, openNow }) => ({ kind, openNow }));
+}
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [itinerary, setItinerary] = useState<Stop[]>(emptyPlan);
@@ -170,6 +202,7 @@ export default function Home() {
   const [placesMode, setPlacesMode] = useState<'unknown' | 'ready' | 'missing' | 'error'>('unknown');
   const [selectingPlace, setSelectingPlace] = useState<string | null>(null);
   const [pendingSearch, setPendingSearch] = useState<PendingSearch | null>(null);
+  const [searchQueue, setSearchQueue] = useState<SearchRequest[]>([]);
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
   const [city, setCity] = useState('Milano');
@@ -330,6 +363,12 @@ export default function Home() {
       setItinerary((current) => current.some((item) => item.placeId === candidate.id) ? current : [...current, stop]);
       setPlaceCandidates([]);
       append('assistant', `Ho aggiunto ${place.name} senza modificare le altre tappe. Orari e stato sono stati ricontrollati adesso.`, 'Itinerario aggiornato con Place ID');
+
+      const nextRequest = searchQueue[0];
+      if (nextRequest) {
+        setSearchQueue((current) => current.slice(1));
+        askForSearchDetails(nextRequest.kind, { lat: place.lat, lng: place.lng }, nextRequest.openNow);
+      }
     } catch {
       append('assistant', `Non riesco a verificare i dettagli di ${candidate.name}; non l’ho aggiunto.`, 'Itinerario invariato');
     } finally {
@@ -337,9 +376,17 @@ export default function Home() {
     }
   }
 
+  function startSearchFlow(requests: SearchRequest[], origin = coords) {
+    const [first, ...rest] = requests;
+    if (!first) return;
+    setSearchQueue(rest);
+    askForSearchDetails(first.kind, origin, first.openNow);
+  }
+
   function handlePrompt(prompt: string) {
     if (thinking) return;
     setPendingSearch(null);
+    setSearchQueue([]);
     append('user', prompt);
 
     if (prompt === 'Cosa faccio adesso?') {
@@ -473,6 +520,7 @@ export default function Home() {
     if (pendingSearch) {
       if (/^(annulla|lascia stare|non importa)$/i.test(value.trim())) {
         setPendingSearch(null);
+        setSearchQueue([]);
         reply('Va bene, lasciamo perdere questa ricerca. Dimmi pure cosa vuoi fare invece.');
         return;
       }
@@ -484,24 +532,7 @@ export default function Home() {
       return;
     }
 
-    const eveningIntent = normalized.includes('sera')
-      || normalized.includes('dopocena')
-      || normalized.includes('dopo cena')
-      || normalized.includes('intratten')
-      || normalized.includes('musica dal vivo')
-      || normalized.includes('concerto')
-      || normalized.includes('teatro')
-      || normalized.includes('cocktail')
-      || normalized.includes('discoteca')
-      || normalized.includes('ballare');
-    const foodPreferenceOnly = /(non mangio|non posso mangiare|evita|senza).{0,12}pesce/.test(normalized)
-      && !normalized.includes('ristor')
-      && !normalized.includes('pranzo')
-      && !/\bcena\b/.test(normalized);
-    const foodIntent = normalized.includes('ristor')
-      || normalized.includes('pranzo')
-      || (normalized.includes('mang') && !foodPreferenceOnly)
-      || (/\bcena\b/.test(normalized) && !normalized.includes('dopo cena'));
+    const searchRequests = extractSearchRequests(normalized);
 
     if (normalized.includes('togli') || normalized.includes('rimuovi')) {
       setItinerary((current) => {
@@ -513,27 +544,14 @@ export default function Home() {
       return;
     }
 
-    if (normalized.includes('caff')) {
-      const origin = normalized.includes('second') && itinerary[1]?.lat != null && itinerary[1]?.lng != null
+    if (searchRequests.length) {
+      const initialOrigin = searchRequests[0].kind === 'cafe'
+        && normalized.includes('second')
+        && itinerary[1]?.lat != null
+        && itinerary[1]?.lng != null
         ? { lat: itinerary[1].lat!, lng: itinerary[1].lng! }
         : coords;
-      askForSearchDetails('cafe', origin);
-      return;
-    }
-
-    if (eveningIntent && !foodIntent) {
-      askForSearchDetails('evening', coords, false);
-      return;
-    }
-
-    if (foodIntent) {
-      const isFutureMeal = normalized.includes('cena') || normalized.includes('stasera') || normalized.includes('domani');
-      askForSearchDetails('restaurant', coords, !isFutureMeal);
-      return;
-    }
-
-    if (normalized.includes('muse') || normalized.includes('mostra') || normalized.includes('arte')) {
-      askForSearchDetails('museum');
+      startSearchFlow(searchRequests, initialOrigin);
       return;
     }
 
@@ -784,7 +802,7 @@ export default function Home() {
 
         <div className="quick-prompts" aria-label="Suggerimenti rapidi">
           <button type="button" onClick={() => handlePrompt('Cosa faccio adesso?')}>Cosa faccio adesso?</button>
-          <button type="button" onClick={() => { append('user', 'Trova un caffè qui vicino'); askForSearchDetails('cafe'); }}>Caffè qui vicino</button>
+          <button type="button" onClick={() => { setSearchQueue([]); append('user', 'Trova un caffè qui vicino'); askForSearchDetails('cafe'); }}>Caffè qui vicino</button>
           <button type="button" onClick={() => handlePrompt('Ritmo tranquillo')}>Ritmo tranquillo</button>
           <button type="button" onClick={() => handlePrompt('Evita la pioggia')}>Evita la pioggia</button>
         </div>
