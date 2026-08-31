@@ -76,7 +76,7 @@ type Profile = {
 };
 
 type PendingSearch = {
-  kind: 'cafe' | 'museum' | 'restaurant';
+  kind: 'cafe' | 'evening' | 'museum' | 'restaurant';
   origin: { lat: number; lng: number };
   openNow: boolean;
 };
@@ -327,13 +327,24 @@ export default function Home() {
       return;
     }
 
+    if (kind === 'evening') {
+      reply('Che tipo di serata cerchi: musica dal vivo, teatro, un cocktail tranquillo o un posto dove ballare?', 'Cerco per la sera, non solo tra i posti aperti ora');
+      return;
+    }
+
     reply('Che tipo di pausa cerchi: un espresso veloce, colazione o un posto tranquillo dove sederti?', 'Una risposta, poi cerco qui vicino');
   }
 
   function refinedSearchQuery(search: PendingSearch, answer: string) {
     const noPreference = /^(nessuna|nessuna preferenza|non ho preferenze|indifferente|fai tu|qualsiasi|sorprendimi)$/i.test(answer.trim());
     const detail = noPreference ? '' : answer.trim();
-    const base = search.kind === 'restaurant' ? 'ristorante' : search.kind === 'museum' ? 'museo' : 'caffè';
+    const base = search.kind === 'restaurant'
+      ? 'ristorante'
+      : search.kind === 'museum'
+        ? 'museo'
+        : search.kind === 'evening'
+          ? 'intrattenimento serale'
+          : 'caffè';
     const dietaryPreference = search.kind === 'restaurant' && profile.noFish ? 'senza pesce' : '';
     return [base, detail, dietaryPreference].filter(Boolean).join(' ');
   }
@@ -355,6 +366,21 @@ export default function Home() {
       return;
     }
 
+    const eveningIntent = normalized.includes('sera')
+      || normalized.includes('dopocena')
+      || normalized.includes('dopo cena')
+      || normalized.includes('intratten')
+      || normalized.includes('musica dal vivo')
+      || normalized.includes('concerto')
+      || normalized.includes('teatro')
+      || normalized.includes('cocktail')
+      || normalized.includes('discoteca')
+      || normalized.includes('ballare');
+    const foodIntent = normalized.includes('ristor')
+      || normalized.includes('pranzo')
+      || normalized.includes('mang')
+      || (/\bcena\b/.test(normalized) && !normalized.includes('dopo cena'));
+
     if (normalized.includes('togli') || normalized.includes('rimuovi')) {
       setItinerary((current) => {
         const museumIndex = normalized.includes('muse') ? current.findIndex((stop) => stop.primaryType?.includes('museum')) : -1;
@@ -373,7 +399,12 @@ export default function Home() {
       return;
     }
 
-    if (normalized.includes('ristor') || normalized.includes('pranzo') || normalized.includes('cena') || normalized.includes('mang')) {
+    if (eveningIntent && !foodIntent) {
+      askForSearchDetails('evening', coords, false);
+      return;
+    }
+
+    if (foodIntent) {
       const isFutureMeal = normalized.includes('cena') || normalized.includes('stasera') || normalized.includes('domani');
       askForSearchDetails('restaurant', coords, !isFutureMeal);
       return;
