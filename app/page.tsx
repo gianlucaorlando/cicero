@@ -75,6 +75,12 @@ type Profile = {
   markets: boolean;
 };
 
+type PendingSearch = {
+  kind: 'cafe' | 'museum' | 'restaurant';
+  origin: { lat: number; lng: number };
+  openNow: boolean;
+};
+
 const initialMessages: Message[] = [
   {
     id: 1,
@@ -133,6 +139,7 @@ export default function Home() {
   const [placeCandidates, setPlaceCandidates] = useState<PlaceCandidate[]>([]);
   const [placesMode, setPlacesMode] = useState<'unknown' | 'ready' | 'missing' | 'error'>('unknown');
   const [selectingPlace, setSelectingPlace] = useState<string | null>(null);
+  const [pendingSearch, setPendingSearch] = useState<PendingSearch | null>(null);
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
   const [city, setCity] = useState('Milano');
@@ -195,7 +202,7 @@ export default function Home() {
     }, delay);
   }
 
-  async function searchPlaces(query: string, origin = coords) {
+  async function searchPlaces(query: string, origin = coords, openNow = true) {
     setThinking(true);
     setPlaceCandidates([]);
     try {
@@ -207,7 +214,7 @@ export default function Home() {
           lat: origin.lat,
           lng: origin.lng,
           radiusMeters: 1200,
-          openNow: true,
+          openNow,
         }),
       });
       const data = await response.json();
@@ -232,8 +239,10 @@ export default function Home() {
       append(
         'assistant',
         candidates.length
-          ? `Ho trovato ${candidates.length} opzioni aperte vicino al punto scelto. Sono risultati reali di Places: scegli quale aggiungere.`
-          : 'Non trovo luoghi aperti adatti vicino al punto scelto. Non aggiungo alternative inventate.',
+          ? `Ho trovato ${candidates.length} opzioni vicino al punto scelto che seguono le tue indicazioni. Quale vuoi aggiungere?`
+          : openNow
+            ? 'Non trovo luoghi aperti adatti vicino al punto scelto. Non aggiungo alternative inventate.'
+            : 'Non trovo luoghi adatti vicino al punto scelto. Non aggiungo alternative inventate.',
         'Ricerca Google Places completata',
       );
     } catch {
@@ -283,6 +292,7 @@ export default function Home() {
 
   function handlePrompt(prompt: string) {
     if (thinking) return;
+    setPendingSearch(null);
     append('user', prompt);
 
     if (prompt === 'Cosa faccio adesso?') {
@@ -299,9 +309,51 @@ export default function Home() {
     void searchPlaces('musei e attività al coperto');
   }
 
+  function askForSearchDetails(kind: PendingSearch['kind'], origin = coords, openNow = true) {
+    setPendingSearch({ kind, origin, openNow });
+
+    if (kind === 'restaurant') {
+      reply(
+        profile.noFish
+          ? 'Che tipo di cucina ti va? Tengo già fuori il pesce; dimmi pure se hai altre preferenze alimentari.'
+          : 'Che tipo di cucina ti va? Dimmi anche se hai preferenze o esigenze alimentari.',
+        profile.noFish ? 'Pesce escluso dal tuo profilo' : 'Una risposta, poi cerco qui vicino',
+      );
+      return;
+    }
+
+    if (kind === 'museum') {
+      reply('Che cosa ti interessa di più: arte, design, storia o scienza?', 'Una risposta, poi cerco qui vicino');
+      return;
+    }
+
+    reply('Che tipo di pausa cerchi: un espresso veloce, colazione o un posto tranquillo dove sederti?', 'Una risposta, poi cerco qui vicino');
+  }
+
+  function refinedSearchQuery(search: PendingSearch, answer: string) {
+    const noPreference = /^(nessuna|nessuna preferenza|non ho preferenze|indifferente|fai tu|qualsiasi|sorprendimi)$/i.test(answer.trim());
+    const detail = noPreference ? '' : answer.trim();
+    const base = search.kind === 'restaurant' ? 'ristorante' : search.kind === 'museum' ? 'museo' : 'caffè';
+    const dietaryPreference = search.kind === 'restaurant' && profile.noFish ? 'senza pesce' : '';
+    return [base, detail, dietaryPreference].filter(Boolean).join(' ');
+  }
+
   function interpretMessage(value: string) {
     const normalized = value.toLocaleLowerCase('it');
     append('user', value);
+
+    if (pendingSearch) {
+      if (/^(annulla|lascia stare|non importa)$/i.test(value.trim())) {
+        setPendingSearch(null);
+        reply('Va bene, lasciamo perdere questa ricerca. Dimmi pure cosa vuoi fare invece.');
+        return;
+      }
+
+      const search = pendingSearch;
+      setPendingSearch(null);
+      void searchPlaces(refinedSearchQuery(search, value), search.origin, search.openNow);
+      return;
+    }
 
     if (normalized.includes('togli') || normalized.includes('rimuovi')) {
       setItinerary((current) => {
@@ -317,17 +369,18 @@ export default function Home() {
       const origin = normalized.includes('second') && itinerary[1]?.lat != null && itinerary[1]?.lng != null
         ? { lat: itinerary[1].lat!, lng: itinerary[1].lng! }
         : coords;
-      void searchPlaces('caffè', origin);
+      askForSearchDetails('cafe', origin);
       return;
     }
 
     if (normalized.includes('ristor') || normalized.includes('pranzo') || normalized.includes('cena') || normalized.includes('mang')) {
-      void searchPlaces(profile.noFish ? 'ristorante senza pesce' : 'ristorante');
+      const isFutureMeal = normalized.includes('cena') || normalized.includes('stasera') || normalized.includes('domani');
+      askForSearchDetails('restaurant', coords, !isFutureMeal);
       return;
     }
 
     if (normalized.includes('muse') || normalized.includes('mostra') || normalized.includes('arte')) {
-      void searchPlaces('museo');
+      askForSearchDetails('museum');
       return;
     }
 
@@ -573,7 +626,7 @@ export default function Home() {
 
         <div className="quick-prompts" aria-label="Suggerimenti rapidi">
           <button type="button" onClick={() => handlePrompt('Cosa faccio adesso?')}>Cosa faccio adesso?</button>
-          <button type="button" onClick={() => { append('user', 'Trova un caffè qui vicino'); void searchPlaces('caffè'); }}>Caffè qui vicino</button>
+          <button type="button" onClick={() => { append('user', 'Trova un caffè qui vicino'); askForSearchDetails('cafe'); }}>Caffè qui vicino</button>
           <button type="button" onClick={() => handlePrompt('Ritmo tranquillo')}>Ritmo tranquillo</button>
           <button type="button" onClick={() => handlePrompt('Evita la pioggia')}>Evita la pioggia</button>
         </div>
