@@ -14,3 +14,11 @@ export const userProfiles = sqliteTable('user_profiles', {
   createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const placeReviewCache = sqliteTable('place_review_cache', {
+  placeId: text('place_id').primaryKey(),
+  provider: text('provider').notNull(),
+  payload: text('payload').notNull(),
+  expiresAt: integer('expires_at').notNull(),
+  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+});

@@ -76,7 +76,16 @@ type PlaceCandidate = {
   primaryType: string;
   businessStatus: string | null;
   googleMapsUri: string | null;
+  rating: number | null;
+  userRatingCount: number | null;
   distanceMeters: number;
+  tripadvisor: {
+    locationId: string;
+    rating: number;
+    reviewCount: number;
+    ratingImageUrl: string;
+    webUrl: string;
+  } | null;
 };
 
 type ManualPreferenceKey = 'avoidQueues' | 'markets' | 'noFish' | 'slowPace';
@@ -120,6 +129,10 @@ function distanceMeters(from: { lat: number; lng: number }, to: { lat: number; l
 
 function humanDistance(value: number) {
   return value < 1000 ? `${Math.max(10, Math.round(value / 10) * 10)} m` : `${(value / 1000).toFixed(1).replace('.', ',')} km`;
+}
+
+function humanReviewCount(value: number) {
+  return new Intl.NumberFormat('it-IT', { notation: value >= 10_000 ? 'compact' : 'standard' }).format(value);
 }
 
 function nextStopTime(index: number) {
@@ -843,7 +856,7 @@ export default function Home() {
           ))}
 
           {placeCandidates.length > 0 && (
-            <article className="places-card" aria-label="Risultati Google Places">
+            <article className="places-card" aria-label="Luoghi verificati e recensioni disponibili">
               <div className="places-card-head">
                 <div><span>Vicino al punto scelto</span><strong>Scegli una tappa</strong></div>
                 <Badge variant="outline">live</Badge>
@@ -855,18 +868,39 @@ export default function Home() {
                       <span className="place-option-copy">
                         <strong>{place.name}</strong>
                         <small>{humanDistance(place.distanceMeters)} · {place.address}</small>
+                        <span className="place-review-summary">
+                          {place.rating != null && place.userRatingCount != null && (
+                            <span className="google-review">★ {place.rating.toFixed(1).replace('.', ',')} · {humanReviewCount(place.userRatingCount)} su Google</span>
+                          )}
+                          {place.tripadvisor && (
+                            <span className="tripadvisor-review">
+                              <img src={place.tripadvisor.ratingImageUrl} alt={`Tripadvisor ${place.tripadvisor.rating.toFixed(1).replace('.', ',')} su 5`} />
+                              <span>{humanReviewCount(place.tripadvisor.reviewCount)} recensioni</span>
+                            </span>
+                          )}
+                        </span>
                       </span>
                       <span className="place-add">{selectingPlace === place.id ? <LocateFixed className="spin" /> : '+'}</span>
                     </button>
-                    {place.googleMapsUri && (
-                      <a href={place.googleMapsUri} target="_blank" rel="noreferrer" aria-label={`Apri ${place.name} su Google Maps`}>
-                        <ExternalLink />
-                      </a>
-                    )}
+                    <span className="place-source-links">
+                      {place.googleMapsUri && (
+                        <a href={place.googleMapsUri} target="_blank" rel="noreferrer" aria-label={`Apri ${place.name} su Google Maps`}>
+                          <ExternalLink />
+                        </a>
+                      )}
+                      {place.tripadvisor && (
+                        <a href={place.tripadvisor.webUrl} target="_blank" rel="noreferrer" aria-label={`Leggi le recensioni di ${place.name} su Tripadvisor`}>
+                          Trip
+                        </a>
+                      )}
+                    </span>
                   </div>
                 ))}
               </div>
-              <p className="google-attribution">Dati luogo forniti da <strong>Google Maps</strong></p>
+              <p className="google-attribution">
+                Dati luogo forniti da <strong>Google Maps</strong>
+                {placeCandidates.some((place) => place.tripadvisor) && <> · valutazioni <strong>Tripadvisor</strong></>}
+              </p>
             </article>
           )}
 
