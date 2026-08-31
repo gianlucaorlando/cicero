@@ -781,7 +781,7 @@ export default function Home() {
   return (
     <main className={`app-shell ${mapOpen ? '' : 'map-collapsed'}`}>
       <section className="map-stage" aria-label="Mappa dell’itinerario">
-        <MapPicker coords={coords} onChange={movePin} />
+        <MapPicker coords={coords} onChange={movePin} stops={itinerary} />
         <div className="map-wash" aria-hidden="true" />
 
         <header className="topbar">
@@ -821,7 +821,7 @@ export default function Home() {
         {itinerary.length > 0 && (
           <div className="route-summary">
             <Route />
-            <div><strong>{itinerary.length} tappe</strong><span>percorso aggiornato</span></div>
+            <div><strong>{itinerary.length} tappe collegate</strong><span>traccia indicativa evidenziata</span></div>
           </div>
         )}
 
