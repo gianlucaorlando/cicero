@@ -19,6 +19,7 @@ import {
   Sparkles,
   Sun,
   Umbrella,
+  X,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -68,15 +69,21 @@ type PlaceCandidate = {
   distanceMeters: number;
 };
 
+type PreferenceCategory = 'cafe' | 'evening' | 'museum' | 'restaurant';
+
+type LearnedPreferences = Record<PreferenceCategory, string[]>;
+type ManualPreferenceKey = 'avoidQueues' | 'markets' | 'noFish' | 'slowPace';
+
 type Profile = {
   slowPace: boolean;
   avoidQueues: boolean;
   noFish: boolean;
   markets: boolean;
+  learned: LearnedPreferences;
 };
 
 type PendingSearch = {
-  kind: 'cafe' | 'evening' | 'museum' | 'restaurant';
+  kind: PreferenceCategory;
   origin: { lat: number; lng: number };
   openNow: boolean;
 };
@@ -91,10 +98,25 @@ const initialMessages: Message[] = [
 ];
 
 const initialProfile: Profile = {
-  slowPace: true,
-  avoidQueues: true,
-  noFish: true,
-  markets: true,
+  slowPace: false,
+  avoidQueues: false,
+  noFish: false,
+  markets: false,
+  learned: {
+    cafe: [],
+    evening: [],
+    museum: [],
+    restaurant: [],
+  },
+};
+
+const PROFILE_STORAGE_KEY = 'cicero-profile-v2';
+
+const preferenceCategoryLabels: Record<PreferenceCategory, string> = {
+  cafe: 'Caffè',
+  evening: 'Serata',
+  museum: 'Musei',
+  restaurant: 'Ristoranti',
 };
 
 const emptyPlan: Stop[] = [];
@@ -133,6 +155,14 @@ function shiftTime(value: string, minutes: number) {
   return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
+function isNoPreferenceAnswer(value: string) {
+  return /^(nessuna|nessuna preferenza|non ho preferenze|indifferente|fai tu|qualsiasi|sorprendimi)$/i.test(value.trim());
+}
+
+function isAffirmingPreferenceAnswer(value: string) {
+  return /^(sì|si|va bene|confermo|come sempre|le stesse|gli stessi|tienile|tienili)$/i.test(value.trim());
+}
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [itinerary, setItinerary] = useState<Stop[]>(emptyPlan);
@@ -155,11 +185,28 @@ export default function Home() {
   const [mapOpen, setMapOpen] = useState(true);
   const nextId = useRef(2);
   const messagesEnd = useRef<HTMLDivElement>(null);
+  const activePreferenceCount = [profile.slowPace, profile.avoidQueues, profile.noFish, profile.markets].filter(Boolean).length
+    + Object.values(profile.learned).reduce((total, values) => total + values.length, 0);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem('cicero-profile');
+    const saved = window.localStorage.getItem(PROFILE_STORAGE_KEY);
     if (saved) {
-      try { setProfile(JSON.parse(saved) as Profile); } catch { /* ignore invalid local data */ }
+      try {
+        const parsed = JSON.parse(saved) as Partial<Profile>;
+        const learned = parsed.learned as Partial<LearnedPreferences> | undefined;
+        setProfile({
+          slowPace: parsed.slowPace === true,
+          avoidQueues: parsed.avoidQueues === true,
+          noFish: parsed.noFish === true,
+          markets: parsed.markets === true,
+          learned: {
+            cafe: Array.isArray(learned?.cafe) ? learned.cafe.slice(0, 4) : [],
+            evening: Array.isArray(learned?.evening) ? learned.evening.slice(0, 4) : [],
+            museum: Array.isArray(learned?.museum) ? learned.museum.slice(0, 4) : [],
+            restaurant: Array.isArray(learned?.restaurant) ? learned.restaurant.slice(0, 4) : [],
+          },
+        });
+      } catch { /* ignore invalid local data */ }
     }
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => undefined);
@@ -167,7 +214,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem('cicero-profile', JSON.stringify(profile));
+    window.localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
   }, [profile]);
 
   useEffect(() => {
@@ -309,8 +356,73 @@ export default function Home() {
     void searchPlaces('musei e attività al coperto');
   }
 
+  function rememberPreference(kind: PreferenceCategory, answer: string) {
+    const value = answer.trim().replace(/\s+/g, ' ').slice(0, 60);
+    if (!value || isNoPreferenceAnswer(value) || isAffirmingPreferenceAnswer(value)) return;
+
+    setProfile((current) => {
+      const previous = current.learned[kind];
+      const withoutDuplicate = previous.filter((item) => item.toLocaleLowerCase('it') !== value.toLocaleLowerCase('it'));
+      return {
+        ...current,
+        learned: {
+          ...current.learned,
+          [kind]: [value, ...withoutDuplicate].slice(0, 4),
+        },
+      };
+    });
+  }
+
+  function forgetPreference(kind: PreferenceCategory, value: string) {
+    setProfile((current) => ({
+      ...current,
+      learned: {
+        ...current.learned,
+        [kind]: current.learned[kind].filter((item) => item !== value),
+      },
+    }));
+  }
+
+  function rememberProfileSignals(message: string) {
+    const signals: string[] = [];
+    const updates: Partial<Pick<Profile, 'avoidQueues' | 'markets' | 'noFish' | 'slowPace'>> = {};
+
+    if (/(non mangio|non posso mangiare|evita|senza).{0,12}pesce/.test(message)) {
+      updates.noFish = true;
+      signals.push('niente pesce');
+    }
+    if (/(odio|evita|evitare|non sopporto).{0,16}(code|fila)/.test(message)) {
+      updates.avoidQueues = true;
+      signals.push('evitare le code');
+    }
+    if (/(ritmo tranquillo|senza fretta|andare piano|camminare poco)/.test(message)) {
+      updates.slowPace = true;
+      signals.push('ritmo tranquillo');
+    }
+    if (/(mi piacciono|adoro|amo|preferisco).{0,20}mercat/.test(message)) {
+      updates.markets = true;
+      signals.push('preferenza per i mercati');
+    }
+
+    if (signals.length) setProfile((current) => ({ ...current, ...updates }));
+    return signals;
+  }
+
   function askForSearchDetails(kind: PendingSearch['kind'], origin = coords, openNow = true) {
     setPendingSearch({ kind, origin, openNow });
+    const remembered = profile.learned[kind];
+
+    if (remembered.length) {
+      const context = kind === 'restaurant'
+        ? 'Per mangiare'
+        : kind === 'museum'
+          ? 'Per i musei'
+          : kind === 'evening'
+            ? 'Per la sera'
+            : 'Per una pausa caffè';
+      reply(`${context} ricordo: ${remembered.join(', ')}. Le tengo o oggi vuoi qualcosa di diverso?`, 'Preferenze dal tuo profilo');
+      return;
+    }
 
     if (kind === 'restaurant') {
       reply(
@@ -336,8 +448,12 @@ export default function Home() {
   }
 
   function refinedSearchQuery(search: PendingSearch, answer: string) {
-    const noPreference = /^(nessuna|nessuna preferenza|non ho preferenze|indifferente|fai tu|qualsiasi|sorprendimi)$/i.test(answer.trim());
-    const detail = noPreference ? '' : answer.trim();
+    const remembered = profile.learned[search.kind];
+    const detail = isNoPreferenceAnswer(answer)
+      ? ''
+      : isAffirmingPreferenceAnswer(answer)
+        ? remembered.join(' ')
+        : answer.trim();
     const base = search.kind === 'restaurant'
       ? 'ristorante'
       : search.kind === 'museum'
@@ -352,6 +468,7 @@ export default function Home() {
   function interpretMessage(value: string) {
     const normalized = value.toLocaleLowerCase('it');
     append('user', value);
+    const learnedSignals = rememberProfileSignals(normalized);
 
     if (pendingSearch) {
       if (/^(annulla|lascia stare|non importa)$/i.test(value.trim())) {
@@ -362,6 +479,7 @@ export default function Home() {
 
       const search = pendingSearch;
       setPendingSearch(null);
+      rememberPreference(search.kind, value);
       void searchPlaces(refinedSearchQuery(search, value), search.origin, search.openNow);
       return;
     }
@@ -376,9 +494,13 @@ export default function Home() {
       || normalized.includes('cocktail')
       || normalized.includes('discoteca')
       || normalized.includes('ballare');
+    const foodPreferenceOnly = /(non mangio|non posso mangiare|evita|senza).{0,12}pesce/.test(normalized)
+      && !normalized.includes('ristor')
+      && !normalized.includes('pranzo')
+      && !/\bcena\b/.test(normalized);
     const foodIntent = normalized.includes('ristor')
       || normalized.includes('pranzo')
-      || normalized.includes('mang')
+      || (normalized.includes('mang') && !foodPreferenceOnly)
       || (/\bcena\b/.test(normalized) && !normalized.includes('dopo cena'));
 
     if (normalized.includes('togli') || normalized.includes('rimuovi')) {
@@ -418,6 +540,11 @@ export default function Home() {
     if (normalized.includes('ora') || normalized.includes('60 minut')) {
       setItinerary((current) => current.map((stop) => ({ ...stop, time: shiftTime(stop.time, 60) })));
       reply('Spostato tutto avanti di un’ora, mantenendo distanze e ordine delle tappe.', 'Orari aggiornati');
+      return;
+    }
+
+    if (learnedSignals.length) {
+      reply(`Me lo ricorderò: ${learnedSignals.join(', ')}. Da ora lo considero nelle proposte.`, 'Profilo aggiornato dalla conversazione');
       return;
     }
 
@@ -509,7 +636,7 @@ export default function Home() {
     }
   }
 
-  function toggleProfile(key: keyof Profile) {
+  function toggleProfile(key: ManualPreferenceKey) {
     setProfile((current) => ({ ...current, [key]: !current[key] }));
   }
 
@@ -575,7 +702,7 @@ export default function Home() {
             <h1>{itinerary.length ? 'Il tuo percorso, mentre ne parliamo.' : 'Parliamo. Al percorso penso io.'}</h1>
           </div>
           <Button className="memory-button" variant="outline" size="sm" onClick={() => setProfileOpen(true)}>
-            <SlidersHorizontal /> {Object.values(profile).filter(Boolean).length} preferenze
+            <SlidersHorizontal /> {activePreferenceCount} preferenze
           </Button>
         </div>
 
@@ -689,6 +816,26 @@ export default function Home() {
             <Preference label="Non mangio pesce" detail="Escluso dai suggerimenti" checked={profile.noFish} onChange={() => toggleProfile('noFish')} />
             <Preference label="Mi piacciono i mercati" detail="Priorità a esperienze locali" checked={profile.markets} onChange={() => toggleProfile('markets')} />
           </div>
+          <section className="learned-memory" aria-labelledby="learned-memory-title">
+            <div className="learned-memory-head">
+              <strong id="learned-memory-title">Imparate conversando</strong>
+              <small>Nascono dalle tue richieste</small>
+            </div>
+            {Object.values(profile.learned).some((values) => values.length) ? (
+              <div className="memory-chips">
+                {(Object.entries(profile.learned) as Array<[PreferenceCategory, string[]]>).flatMap(([kind, values]) =>
+                  values.map((value) => (
+                    <button className="memory-chip" type="button" key={`${kind}-${value}`} onClick={() => forgetPreference(kind, value)} aria-label={`Rimuovi ${value} da ${preferenceCategoryLabels[kind]}`}>
+                      <span><small>{preferenceCategoryLabels[kind]}</small>{value}</span>
+                      <X aria-hidden="true" />
+                    </button>
+                  )),
+                )}
+              </div>
+            ) : (
+              <p className="memory-empty">Quando mi dirai cosa preferisci, lo troverai qui.</p>
+            )}
+          </section>
           <p className="storage-note"><Check /> Salvato su questo dispositivo</p>
         </SheetContent>
       </Sheet>

@@ -564,6 +564,28 @@ h1 {
 .preference-row > span { display: flex; flex-direction: column; }
 .preference-row strong { font-size: 14px; }
 .preference-row small { margin-top: 2px; color: #897b6f; font-size: 11px; }
+.learned-memory { margin: 8px 18px 0; padding-top: 14px; border-top: 1px solid #e4d9ca; }
+.learned-memory-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.learned-memory-head strong { font-size: 13px; }
+.learned-memory-head small { color: #948579; font-size: 10px; }
+.memory-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; }
+.memory-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 7px 9px 7px 11px;
+  border: 1px solid #dccfc0;
+  border-radius: 13px;
+  background: #fffdf8;
+  color: #51443a;
+  text-align: left;
+  cursor: pointer;
+}
+.memory-chip span { display: flex; flex-direction: column; max-width: 230px; font-size: 12px; line-height: 1.3; }
+.memory-chip small { color: var(--primary); font-size: 8px; font-weight: 760; letter-spacing: .07em; text-transform: uppercase; }
+.memory-chip svg { width: 14px; height: 14px; color: #9b8d81; }
+.memory-empty { margin: 10px 0 0; color: #8c7f74; font-size: 11px; line-height: 1.45; }
 .storage-note { display: flex; align-items: center; gap: 6px; margin: auto 18px 0; padding-top: 14px; color: #71806e; font-size: 11px; }
 .storage-note svg { width: 13px; }
 
