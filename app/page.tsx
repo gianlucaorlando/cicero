@@ -135,6 +135,38 @@ function humanReviewCount(value: number) {
   return new Intl.NumberFormat('it-IT', { notation: value >= 10_000 ? 'compact' : 'standard' }).format(value);
 }
 
+function googleMapsRouteUrl(origin: { lat: number; lng: number }, stops: Stop[]) {
+  if (!stops.length) return null;
+  const stopLocations = stops.map((stop) => Number.isFinite(stop.lat) && Number.isFinite(stop.lng)
+    ? `${stop.lat},${stop.lng}`
+    : stop.address || stop.title);
+  const destination = stopLocations.at(-1);
+  if (!destination) return null;
+
+  const params = new URLSearchParams({
+    api: '1',
+    origin: `${origin.lat},${origin.lng}`,
+    destination,
+    travelmode: 'walking',
+  });
+  const lastStop = stops.at(-1);
+  if (lastStop?.placeId) params.set('destination_place_id', lastStop.placeId);
+  if (stopLocations.length > 1) params.set('waypoints', stopLocations.slice(0, -1).join('|'));
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
+function itineraryDistance(origin: { lat: number; lng: number }, stops: Stop[]) {
+  let previous = origin;
+  let total = 0;
+  for (const stop of stops) {
+    if (!Number.isFinite(stop.lat) || !Number.isFinite(stop.lng)) return null;
+    const next = { lat: stop.lat!, lng: stop.lng! };
+    total += distanceMeters(previous, next);
+    previous = next;
+  }
+  return total;
+}
+
 function nextStopTime(index: number) {
   const date = new Date(Date.now() + (15 + index * 45) * 60_000);
   return date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
@@ -223,6 +255,7 @@ export default function Home() {
   const [profileReady, setProfileReady] = useState(false);
   const [profileStatus, setProfileStatus] = useState<'error' | 'loading' | 'saved' | 'saving' | 'signed-out' | 'unconfigured'>('loading');
   const [profileOpen, setProfileOpen] = useState(false);
+  const [routeOpen, setRouteOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
   const [locating, setLocating] = useState(false);
   const [mapOpen, setMapOpen] = useState(true);
@@ -251,6 +284,8 @@ export default function Home() {
           : profileStatus === 'unconfigured'
             ? 'Auth0 deve ancora essere collegato'
             : 'Preferenze non sincronizzate';
+  const routeDistance = itineraryDistance(coords, itinerary);
+  const googleMapsUrl = googleMapsRouteUrl(coords, itinerary);
 
   useEffect(() => {
     if ('serviceWorker' in navigator) {
@@ -873,7 +908,15 @@ export default function Home() {
             <div><strong>{placeCandidates.length} proposte sulla mappa</strong><span>Tocca un pin oppure scegli dall’elenco</span></div>
           </div>
         ) : itinerary.length > 0 && (
-          <button className="route-summary" type="button" onClick={() => setRouteFocusToken((value) => value + 1)} aria-label="Centra tutto il percorso sulla mappa">
+          <button
+            className="route-summary"
+            type="button"
+            onClick={() => {
+              setRouteFocusToken((value) => value + 1);
+              setRouteOpen(true);
+            }}
+            aria-label="Apri il riepilogo del percorso"
+          >
             <span className="route-summary-icon"><Route /></span>
             <span className="route-summary-copy">
               <small>Il tuo percorso</small>
@@ -1027,6 +1070,62 @@ export default function Home() {
           {placesMode === 'ready' ? 'Google Places connesso · LLM in modalità demo' : placesMode === 'missing' ? 'Google Places pronto · chiave server richiesta' : placesMode === 'error' ? 'Google Places temporaneamente non disponibile' : 'Google Places integrato · attivazione server richiesta'}
         </p>
       </section>
+
+      <Sheet open={routeOpen && itinerary.length > 0} onOpenChange={setRouteOpen}>
+        <SheetContent className="route-detail-sheet" side="bottom">
+          <SheetHeader>
+            <p className="sheet-kicker">Il tuo percorso</p>
+            <SheetTitle>Partenza + {itinerary.length} {itinerary.length === 1 ? 'tappa' : 'tappe'}</SheetTitle>
+            <SheetDescription>Le tappe scelte, nell’ordine in cui le visiterai.</SheetDescription>
+          </SheetHeader>
+
+          <div className="route-detail-scroll">
+            <div className="route-detail-stats" aria-label="Riepilogo del percorso">
+              <span><small>Partenza</small><strong>{locationLabel}</strong></span>
+              <span><small>Distanza</small><strong>{routeDistance == null ? 'da calcolare' : humanDistance(routeDistance)}</strong></span>
+              <span><small>Spostamento</small><strong>A piedi</strong></span>
+            </div>
+
+            <ol className="route-detail-list">
+              <li className="route-detail-origin">
+                <span className="route-detail-marker"><MapPin /></span>
+                <div><small>Partenza</small><strong>{locationLabel}</strong><span>{city}</span></div>
+              </li>
+              {itinerary.map((stop, index) => {
+                const previous = index === 0 ? coords : itinerary[index - 1];
+                const segmentDistance = Number.isFinite(previous.lat) && Number.isFinite(previous.lng) && Number.isFinite(stop.lat) && Number.isFinite(stop.lng)
+                  ? distanceMeters({ lat: previous.lat!, lng: previous.lng! }, { lat: stop.lat!, lng: stop.lng! })
+                  : null;
+                return (
+                  <li key={stop.id}>
+                    <span className="route-detail-marker">{index + 1}</span>
+                    <div>
+                      <small>{stop.time} · {segmentDistance == null ? 'distanza da calcolare' : `${humanDistance(segmentDistance)} dalla tappa precedente`}</small>
+                      <strong>{stop.title}</strong>
+                      <span>{stop.address || stop.detail}</span>
+                      <em>{stop.detail}</em>
+                    </div>
+                    {stop.googleMapsUri && (
+                      <a href={stop.googleMapsUri} target="_blank" rel="noreferrer" aria-label={`Apri i dettagli di ${stop.title} su Google Maps`}>
+                        <ExternalLink />
+                      </a>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+
+          {googleMapsUrl && (
+            <div className="route-export">
+              <a href={googleMapsUrl} target="_blank" rel="noreferrer">
+                <Navigation /> Apri il percorso in Google Maps <ExternalLink />
+              </a>
+              <small>Google Maps ricalcolerà percorso pedonale, tempi e aperture nell’app.</small>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
 
       <Sheet open={profileOpen} onOpenChange={setProfileOpen}>
         <SheetContent className="profile-sheet" side="right">
