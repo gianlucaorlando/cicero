@@ -114,8 +114,8 @@ const initialMessages: Message[] = [
   {
     id: 1,
     role: 'assistant',
-    text: 'Sei nel centro di Milano. Dimmi quanto tempo hai: terrò insieme meteo, distanze e ciò che preferisci.',
-    meta: 'Posizione e meteo aggiornati ora',
+    text: 'Vuoi che ti proponga un itinerario basato sulle tue indicazioni, sulla posizione e sul tempo che hai a disposizione?',
+    meta: 'Userò solo luoghi verificati',
   },
 ];
 
@@ -284,6 +284,7 @@ export default function Home() {
   const [searchQueue, setSearchQueue] = useState<SearchRequest[]>([]);
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
+  const [awaitingItineraryConsent, setAwaitingItineraryConsent] = useState(true);
   const [city, setCity] = useState('Milano');
   const [cityInput, setCityInput] = useState('Milano');
   const [addressInput, setAddressInput] = useState('');
@@ -591,6 +592,7 @@ export default function Home() {
 
   function handlePrompt(prompt: string) {
     if (thinking) return;
+    setAwaitingItineraryConsent(false);
     setPendingSearch(null);
     setSearchQueue([]);
     append('user', prompt);
@@ -681,6 +683,7 @@ export default function Home() {
   }
 
   function askForSearchDetails(kind: PendingSearch['kind'], origin = coords, openNow = true) {
+    setAwaitingItineraryConsent(false);
     const saved = savedSearchPreferences(kind);
 
     if (saved.length) {
@@ -754,6 +757,26 @@ export default function Home() {
     const normalized = value.toLocaleLowerCase('it');
     append('user', value);
     const learnedSignals = rememberProfileSignals(normalized);
+
+    if (awaitingItineraryConsent) {
+      setAwaitingItineraryConsent(false);
+      if (/^(no|no grazie|preferisco di no|non ora|non adesso)[.!]?$/i.test(value.trim())) {
+        reply('Va bene. Puoi comunque chiedermi una singola tappa o un consiglio vicino a te quando vuoi.');
+        return;
+      }
+
+      const affirmative = /^(sì|si|certo|ok|va bene|volentieri|proponi|proponilo|proponimi)/i.test(value.trim());
+      const mentionsTime = /\b(\d+\s*(ore|ora|minuti|minuto)|mezz['’]?ora|tutto il giorno|giornata)\b/i.test(normalized);
+      if ((affirmative || mentionsTime) && extractSearchRequests(normalized).length === 0) {
+        reply(
+          mentionsTime
+            ? 'Perfetto. Cosa ti piacerebbe fare durante questo tempo?'
+            : 'Perfetto. Quanto tempo hai e cosa ti piacerebbe fare?',
+          learnedSignals.length ? 'Preferenze già considerate' : 'Una risposta, poi preparo le prime tappe',
+        );
+        return;
+      }
+    }
 
     if (pendingSearch) {
       if (/^(annulla|lascia stare|non importa)$/i.test(value.trim())) {
@@ -964,6 +987,7 @@ export default function Home() {
   }
 
   function loadSavedRoute(route: SavedRoute) {
+    setAwaitingItineraryConsent(false);
     setCity(route.city);
     setCityInput(route.city);
     setLocationLabel(route.locationLabel);
@@ -1204,6 +1228,7 @@ export default function Home() {
         </div>
 
         <div className="quick-prompts" aria-label="Suggerimenti rapidi">
+          {awaitingItineraryConsent && <button type="button" onClick={() => interpretMessage('Sì, proponimi un itinerario')}>Sì, proponilo</button>}
           <button type="button" onClick={() => handlePrompt('Cosa faccio adesso?')}>Cosa faccio adesso?</button>
           <button type="button" onClick={() => { setSearchQueue([]); append('user', 'Trova un caffè qui vicino'); askForSearchDetails('cafe'); }}>Caffè qui vicino</button>
           <button type="button" onClick={() => { setSearchQueue([]); append('user', 'Vorrei fare shopping'); askForSearchDetails('shopping'); }}>Shopping</button>
