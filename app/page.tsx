@@ -281,7 +281,6 @@ export default function Home() {
   const [placesMode, setPlacesMode] = useState<'unknown' | 'ready' | 'missing' | 'error'>('unknown');
   const [selectingPlace, setSelectingPlace] = useState<string | null>(null);
   const [pendingSearch, setPendingSearch] = useState<PendingSearch | null>(null);
-  const [searchQueue, setSearchQueue] = useState<SearchRequest[]>([]);
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
   const [awaitingItineraryConsent, setAwaitingItineraryConsent] = useState(true);
@@ -308,6 +307,7 @@ export default function Home() {
   const [mapOpen, setMapOpen] = useState(true);
   const [routeFocusToken, setRouteFocusToken] = useState(0);
   const nextId = useRef(2);
+  const searchQueueRef = useRef<SearchRequest[]>([]);
   const messagesEnd = useRef<HTMLDivElement>(null);
   const lastPersistedProfile = useRef<string | null>(null);
   const profileSyncEnabled = useRef(false);
@@ -569,11 +569,16 @@ export default function Home() {
 
       setItinerary((current) => current.some((item) => item.placeId === candidate.id) ? current : [...current, stop]);
       setPlaceCandidates([]);
-      append('assistant', `Ho aggiunto ${place.name} senza modificare le altre tappe. Orari e stato sono stati ricontrollati adesso.`, 'Itinerario aggiornato con Place ID');
+      const nextRequest = searchQueueRef.current.shift();
+      append(
+        'assistant',
+        nextRequest
+          ? `Ho aggiunto ${place.name}. Ora passiamo alla seconda parte della richiesta: ${preferenceCategoryLabels[nextRequest.kind].toLocaleLowerCase('it')}.`
+          : `Ho aggiunto ${place.name} senza modificare le altre tappe. Orari e stato sono stati ricontrollati adesso.`,
+        nextRequest ? 'Prima tappa impostata · proseguo con il piano' : 'Itinerario aggiornato con Place ID',
+      );
 
-      const nextRequest = searchQueue[0];
       if (nextRequest) {
-        setSearchQueue((current) => current.slice(1));
         askForSearchDetails(nextRequest.kind, { lat: place.lat, lng: place.lng }, nextRequest.openNow);
       }
     } catch {
@@ -586,7 +591,7 @@ export default function Home() {
   function startSearchFlow(requests: SearchRequest[], origin = coords) {
     const [first, ...rest] = requests;
     if (!first) return;
-    setSearchQueue(rest);
+    searchQueueRef.current = rest;
     askForSearchDetails(first.kind, origin, first.openNow);
   }
 
@@ -594,7 +599,7 @@ export default function Home() {
     if (thinking) return;
     setAwaitingItineraryConsent(false);
     setPendingSearch(null);
-    setSearchQueue([]);
+    searchQueueRef.current = [];
     append('user', prompt);
 
     if (prompt === 'Cosa faccio adesso?') {
@@ -781,7 +786,7 @@ export default function Home() {
     if (pendingSearch) {
       if (/^(annulla|lascia stare|non importa)$/i.test(value.trim())) {
         setPendingSearch(null);
-        setSearchQueue([]);
+        searchQueueRef.current = [];
         reply('Va bene, lasciamo perdere questa ricerca. Dimmi pure cosa vuoi fare invece.');
         return;
       }
@@ -1230,8 +1235,8 @@ export default function Home() {
         <div className="quick-prompts" aria-label="Suggerimenti rapidi">
           {awaitingItineraryConsent && <button type="button" onClick={() => interpretMessage('Sì, proponimi un itinerario')}>Sì, proponilo</button>}
           <button type="button" onClick={() => handlePrompt('Cosa faccio adesso?')}>Cosa faccio adesso?</button>
-          <button type="button" onClick={() => { setSearchQueue([]); append('user', 'Trova un caffè qui vicino'); askForSearchDetails('cafe'); }}>Caffè qui vicino</button>
-          <button type="button" onClick={() => { setSearchQueue([]); append('user', 'Vorrei fare shopping'); askForSearchDetails('shopping'); }}>Shopping</button>
+          <button type="button" onClick={() => { searchQueueRef.current = []; append('user', 'Trova un caffè qui vicino'); askForSearchDetails('cafe'); }}>Caffè qui vicino</button>
+          <button type="button" onClick={() => { searchQueueRef.current = []; append('user', 'Vorrei fare shopping'); askForSearchDetails('shopping'); }}>Shopping</button>
           <button type="button" onClick={() => handlePrompt('Ritmo tranquillo')}>Ritmo tranquillo</button>
           <button type="button" onClick={() => handlePrompt('Evita la pioggia')}>Evita la pioggia</button>
         </div>
