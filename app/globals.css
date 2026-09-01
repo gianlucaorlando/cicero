@@ -504,12 +504,22 @@ h1 {
 .messages {
   flex: 1;
   min-height: 0;
-  padding: 20px 2px 14px 0;
+  padding: 20px 8px 14px 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-width: none;
+  scrollbar-color: #b8ad9f transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
 }
-.messages::-webkit-scrollbar { display: none; }
+.messages::-webkit-scrollbar { width: 6px; }
+.messages::-webkit-scrollbar-track { background: transparent; }
+.messages::-webkit-scrollbar-thumb {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: #b8ad9f;
+  background-clip: padding-box;
+}
+.messages::-webkit-scrollbar-thumb:active { background: #8f8274; }
 
 .message {
   display: flex;
