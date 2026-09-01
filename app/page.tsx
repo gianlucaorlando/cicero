@@ -5,7 +5,6 @@ import {
   Check,
   ChevronRight,
   CloudRain,
-  Coffee,
   ExternalLink,
   LogIn,
   LogOut,
@@ -224,6 +223,7 @@ export default function Home() {
   const [locationOpen, setLocationOpen] = useState(false);
   const [locating, setLocating] = useState(false);
   const [mapOpen, setMapOpen] = useState(true);
+  const [routeFocusToken, setRouteFocusToken] = useState(0);
   const nextId = useRef(2);
   const messagesEnd = useRef<HTMLDivElement>(null);
   const lastPersistedProfile = useRef<string | null>(null);
@@ -780,8 +780,8 @@ export default function Home() {
 
   return (
     <main className={`app-shell ${mapOpen ? '' : 'map-collapsed'}`}>
-      <section className="map-stage" aria-label="Mappa dell’itinerario">
-        <MapPicker coords={coords} onChange={movePin} stops={itinerary} />
+      <section className={`map-stage ${itinerary.length ? 'has-route' : ''}`} aria-label="Mappa dell’itinerario">
+        <MapPicker coords={coords} onChange={movePin} stops={itinerary} focusToken={routeFocusToken} />
         <div className="map-wash" aria-hidden="true" />
 
         <header className="topbar">
@@ -819,10 +819,19 @@ export default function Home() {
         </form>
 
         {itinerary.length > 0 && (
-          <div className="route-summary">
-            <Route />
-            <div><strong>{itinerary.length} tappe collegate</strong><span>traccia indicativa evidenziata</span></div>
-          </div>
+          <button className="route-summary" type="button" onClick={() => setRouteFocusToken((value) => value + 1)} aria-label="Centra tutto il percorso sulla mappa">
+            <span className="route-summary-icon"><Route /></span>
+            <span className="route-summary-copy">
+              <small>Il tuo percorso</small>
+              <strong>Partenza + {itinerary.length} {itinerary.length === 1 ? 'tappa' : 'tappe'}</strong>
+              <span>Segui i numeri sulla mappa</span>
+            </span>
+            <span className="route-steps" aria-hidden="true">
+              <i className="route-step-origin"><MapPin /></i>
+              {itinerary.slice(0, 3).map((stop, index) => <i key={stop.id}>{index + 1}</i>)}
+              {itinerary.length > 3 && <em>+{itinerary.length - 3}</em>}
+            </span>
+          </button>
         )}
 
         <Button className="locate-button" variant="outline" size="icon-lg" aria-label="Usa la mia posizione" onClick={useCurrentLocation} disabled={locating}>
@@ -907,16 +916,14 @@ export default function Home() {
           {itinerary.length > 0 && (
             <article className="itinerary-card" aria-label="Itinerario corrente">
               <div className="itinerary-title">
-                <div><span>Il piano vivo</span><strong>{itinerary.length} tappe · circa 2 ore</strong></div>
+                <div><span>Tappe del percorso</span><strong>{itinerary.length} tappe in ordine · circa 2 ore</strong></div>
                 <Badge variant="outline">{itinerary.some((stop) => stop.source === 'google_places') ? 'live' : 'demo'}</Badge>
               </div>
               <ol>
                 {itinerary.map((stop, index) => (
                   <li key={stop.id}>
                     <time>{stop.time}</time>
-                    <span className={`stop-icon ${stop.kind}`}>
-                      {stop.kind === 'coffee' ? <Coffee /> : stop.kind === 'walk' ? <Route /> : index + 1}
-                    </span>
+                    <span className="stop-icon">{index + 1}</span>
                     <div>
                       {stop.googleMapsUri ? <a href={stop.googleMapsUri} target="_blank" rel="noreferrer"><strong>{stop.title}</strong><ExternalLink /></a> : <strong>{stop.title}</strong>}
                       <span>{stop.detail}</span>

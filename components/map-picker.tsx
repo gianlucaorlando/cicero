@@ -31,10 +31,12 @@ export function MapPicker({
   coords,
   onChange,
   stops,
+  focusToken,
 }: {
   coords: Coordinates;
   onChange: (coords: Coordinates) => void;
   stops: MapStop[];
+  focusToken: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
@@ -86,10 +88,10 @@ export function MapPicker({
     const height = map.getContainer().clientHeight;
     map.fitBounds(bounds, {
       padding: {
-        top: Math.min(206, Math.max(110, Math.round(height * 0.52))),
-        right: 48,
-        bottom: Math.min(94, Math.max(66, Math.round(height * 0.2))),
-        left: 48,
+        top: Math.min(180, Math.max(128, Math.round(height * 0.34))),
+        right: 54,
+        bottom: Math.min(102, Math.max(78, Math.round(height * 0.18))),
+        left: 54,
       },
       maxZoom: 15.5,
       duration: 650,
@@ -106,6 +108,10 @@ export function MapPicker({
     markerRef.current?.setLngLat([coords.lng, coords.lat]);
     updateItineraryOverlay(true);
   }, [coords, stops, updateItineraryOverlay]);
+
+  useEffect(() => {
+    if (focusToken > 0) updateItineraryOverlay(true);
+  }, [focusToken, updateItineraryOverlay]);
 
   useEffect(() => {
     let disposed = false;
@@ -200,6 +206,20 @@ export function MapPicker({
       markerRef.current = marker;
       updateItineraryOverlay(true);
       map.once('style.load', () => updateItineraryOverlay(true));
+
+      let resizeTimer: number | undefined;
+      const resizeObserver = new ResizeObserver(() => {
+        map.resize();
+        if (resizeTimer) window.clearTimeout(resizeTimer);
+        resizeTimer = window.setTimeout(() => {
+          if (stopsRef.current.length > 0) updateItineraryOverlay(true);
+        }, 380);
+      });
+      resizeObserver.observe(containerRef.current);
+      map.once('remove', () => {
+        resizeObserver.disconnect();
+        if (resizeTimer) window.clearTimeout(resizeTimer);
+      });
     }
 
     void initialize();
