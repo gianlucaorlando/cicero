@@ -1,4 +1,4 @@
-export const preferenceCategories = ['cafe', 'evening', 'museum', 'restaurant'] as const;
+export const preferenceCategories = ['cafe', 'evening', 'museum', 'restaurant', 'shopping'] as const;
 
 export type PreferenceCategory = (typeof preferenceCategories)[number];
 export type LearnedPreferences = Record<PreferenceCategory, string[]>;
@@ -22,6 +22,7 @@ export function createEmptyProfile(): Profile {
       evening: [],
       museum: [],
       restaurant: [],
+      shopping: [],
     },
   };
 }
@@ -52,6 +53,7 @@ export function normalizeProfile(value: unknown): Profile {
       evening: normalizeLearnedValues(learned.evening),
       museum: normalizeLearnedValues(learned.museum),
       restaurant: normalizeLearnedValues(learned.restaurant),
+      shopping: normalizeLearnedValues(learned.shopping),
     },
   };
 }

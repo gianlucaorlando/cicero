@@ -113,6 +113,7 @@ const preferenceCategoryLabels: Record<PreferenceCategory, string> = {
   evening: 'Serata',
   museum: 'Musei',
   restaurant: 'Ristoranti',
+  shopping: 'Shopping',
 };
 
 const emptyPlan: Stop[] = [];
@@ -178,6 +179,7 @@ function extractSearchRequests(value: string): SearchRequest[] {
   const restaurantIndex = foodPreferenceOnly ? -1 : firstTextIndex(value, ['ristor', 'pranzo', 'mang', 'cena']);
   const cafeIndex = firstTextIndex(value, ['caff']);
   const museumIndex = firstTextIndex(value, ['muse', 'mostra', 'arte']);
+  const shoppingIndex = firstTextIndex(value, ['shopping', 'negoz', 'boutique', 'acquist', 'comprare', 'outlet', 'centro commerciale', 'vintage']);
   const explicitEveningIndex = firstTextIndex(value, ['dopocena', 'dopo cena', 'intratten', 'musica dal vivo', 'concerto', 'teatro', 'cocktail', 'discoteca', 'ballare']);
   const genericEveningIndex = restaurantIndex < 0 ? firstTextIndex(value, ['serata', 'stasera']) : -1;
   const eveningIndex = explicitEveningIndex >= 0 ? explicitEveningIndex : genericEveningIndex;
@@ -186,6 +188,7 @@ function extractSearchRequests(value: string): SearchRequest[] {
     { kind: 'restaurant' as const, index: restaurantIndex, openNow: !/(cena|stasera|domani)/.test(value) },
     { kind: 'cafe' as const, index: cafeIndex, openNow: true },
     { kind: 'museum' as const, index: museumIndex, openNow: true },
+    { kind: 'shopping' as const, index: shoppingIndex, openNow: !/\b(domani|stasera)\b/.test(value) },
     { kind: 'evening' as const, index: eveningIndex, openNow: false },
   ]
     .filter((request) => request.index >= 0)
@@ -584,6 +587,8 @@ export default function Home() {
         ? 'Per mangiare'
         : kind === 'museum'
           ? 'Per i musei'
+          : kind === 'shopping'
+            ? 'Per lo shopping'
           : kind === 'evening'
             ? 'Per la sera'
             : 'Per una pausa caffè';
@@ -606,6 +611,16 @@ export default function Home() {
       return;
     }
 
+    if (kind === 'shopping') {
+      reply(
+        profile.markets
+          ? 'Ricordo che ti piacciono i mercati: li tengo come priorità o preferisci moda, design, vintage, lusso o un centro commerciale?'
+          : 'Che tipo di shopping cerchi: moda, design, vintage, lusso, mercati o un centro commerciale?',
+        'Una risposta, poi cerco negozi qui vicino',
+      );
+      return;
+    }
+
     if (kind === 'evening') {
       reply('Che tipo di serata cerchi: musica dal vivo, teatro, un cocktail tranquillo o un posto dove ballare?', 'Cerco per la sera, non solo tra i posti aperti ora');
       return;
@@ -625,11 +640,18 @@ export default function Home() {
       ? 'ristorante'
       : search.kind === 'museum'
         ? 'museo'
+        : search.kind === 'shopping'
+          ? 'negozi'
         : search.kind === 'evening'
           ? 'intrattenimento serale'
           : 'caffè';
     const dietaryPreference = search.kind === 'restaurant' && profile.noFish ? 'senza pesce' : '';
-    return [base, detail, dietaryPreference].filter(Boolean).join(' ');
+    const marketPreference = search.kind === 'shopping'
+      && profile.markets
+      && (isNoPreferenceAnswer(answer) || isAffirmingPreferenceAnswer(answer))
+      ? 'mercato locale'
+      : '';
+    return [base, detail, dietaryPreference, marketPreference].filter(Boolean).join(' ');
   }
 
   function interpretMessage(value: string) {
@@ -958,6 +980,7 @@ export default function Home() {
         <div className="quick-prompts" aria-label="Suggerimenti rapidi">
           <button type="button" onClick={() => handlePrompt('Cosa faccio adesso?')}>Cosa faccio adesso?</button>
           <button type="button" onClick={() => { setSearchQueue([]); append('user', 'Trova un caffè qui vicino'); askForSearchDetails('cafe'); }}>Caffè qui vicino</button>
+          <button type="button" onClick={() => { setSearchQueue([]); append('user', 'Vorrei fare shopping'); askForSearchDetails('shopping'); }}>Shopping</button>
           <button type="button" onClick={() => handlePrompt('Ritmo tranquillo')}>Ritmo tranquillo</button>
           <button type="button" onClick={() => handlePrompt('Evita la pioggia')}>Evita la pioggia</button>
         </div>
