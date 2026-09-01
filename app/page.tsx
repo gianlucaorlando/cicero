@@ -778,6 +778,10 @@ export default function Home() {
     setProfile((current) => ({ ...current, [key]: !current[key] }));
   }
 
+  function removeItineraryStop(stopId: string) {
+    setItinerary((current) => current.filter((stop) => stop.id !== stopId));
+  }
+
   return (
     <main className={`app-shell ${mapOpen ? '' : 'map-collapsed'}`}>
       <section className={`map-stage ${itinerary.length ? 'has-route' : ''}`} aria-label="Mappa dell’itinerario">
@@ -928,6 +932,9 @@ export default function Home() {
                       {stop.googleMapsUri ? <a href={stop.googleMapsUri} target="_blank" rel="noreferrer"><strong>{stop.title}</strong><ExternalLink /></a> : <strong>{stop.title}</strong>}
                       <span>{stop.detail}</span>
                     </div>
+                    <Button className="stop-remove" type="button" variant="ghost" size="icon" onClick={() => removeItineraryStop(stop.id)} aria-label={`Rimuovi ${stop.title} dall’itinerario`} title={`Rimuovi ${stop.title}`}>
+                      <X />
+                    </Button>
                   </li>
                 ))}
               </ol>

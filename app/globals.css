@@ -560,7 +560,7 @@ h1 {
 .itinerary-title strong { color: #3a2e27; font-size: 13px; }
 .itinerary-title [data-slot="badge"] { height: 18px; color: #8a796a; font-size: 9px; }
 .itinerary-card ol { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; list-style: none; }
-.itinerary-card li { position: relative; display: grid; grid-template-columns: 38px 24px 1fr; align-items: start; min-height: 48px; }
+.itinerary-card li { position: relative; display: grid; grid-template-columns: 38px 24px minmax(0, 1fr) 34px; align-items: start; min-height: 48px; }
 .itinerary-card li:not(:last-child)::after { content: ''; position: absolute; z-index: 0; top: 25px; bottom: -1px; left: 49px; width: 1px; background: #d8c9b7; }
 .itinerary-card time { padding-top: 4px; color: #8b7c70; font-size: 10px; font-variant-numeric: tabular-nums; }
 .stop-icon { position: relative; z-index: 1; display: grid; place-items: center; width: 22px; height: 22px; border: 2px solid #fffaf2; border-radius: 50%; background: #d45126; color: white !important; box-shadow: 0 2px 7px rgba(74,44,28,.16); font-size: 9px !important; font-weight: 800; }
@@ -569,6 +569,17 @@ h1 {
 .itinerary-card li span { color: #8a7d71; font-size: 10px; }
 .itinerary-card li > div > a { display: inline-flex; align-items: center; gap: 4px; color: inherit; text-decoration: none; }
 .itinerary-card li > div > a svg { width: 10px; color: #8d7d70; }
+.stop-remove {
+  width: 32px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  margin: -3px -4px 0 4px;
+  border-radius: 11px !important;
+  color: #9a654f !important;
+}
+.stop-remove svg { width: 15px; height: 15px; }
+.stop-remove:active { background: #f3dfd3 !important; color: #8d3f28 !important; }
+.stop-remove:focus-visible { outline: 3px solid rgba(212,81,38,.22); outline-offset: 1px; }
 .data-warning { display: flex; gap: 6px; margin: 2px 0 0 !important; padding-top: 9px; border-top: 1px solid #eadfce; color: #8a796c; font-size: 10px !important; line-height: 1.35 !important; }
 .data-warning svg { flex: 0 0 auto; width: 12px; }
 .itinerary-attribution { padding-top: 9px; border-top: 1px solid #eadfce; }
