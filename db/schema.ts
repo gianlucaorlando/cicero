@@ -11,6 +11,7 @@ export const userProfiles = sqliteTable('user_profiles', {
   learnedEvening: text('learned_evening').notNull().default('[]'),
   learnedMuseum: text('learned_museum').notNull().default('[]'),
   learnedRestaurant: text('learned_restaurant').notNull().default('[]'),
+  learnedShopping: text('learned_shopping').notNull().default('[]'),
   createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
 });

@@ -15,6 +15,13 @@
       "when": 1788169261063,
       "tag": "0001_gifted_lord_hawal",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788253634789,
+      "tag": "0002_overrated_sabra",
+      "breakpoints": true
     }
   ]
 }

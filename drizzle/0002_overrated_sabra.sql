@@ -1,0 +1,1 @@
+ALTER TABLE `user_profiles` ADD `learned_shopping` text DEFAULT '[]' NOT NULL;

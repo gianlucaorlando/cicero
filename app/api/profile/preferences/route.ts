@@ -11,6 +11,7 @@ type ProfileRow = {
   learned_evening: string;
   learned_museum: string;
   learned_restaurant: string;
+  learned_shopping: string;
 };
 
 const CREATE_PROFILE_TABLE_SQL = `
@@ -24,6 +25,7 @@ const CREATE_PROFILE_TABLE_SQL = `
     learned_evening TEXT NOT NULL DEFAULT '[]',
     learned_museum TEXT NOT NULL DEFAULT '[]',
     learned_restaurant TEXT NOT NULL DEFAULT '[]',
+    learned_shopping TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
@@ -65,6 +67,7 @@ function profileFromRow(row: ProfileRow): Profile {
       evening: parseStoredValues(row.learned_evening),
       museum: parseStoredValues(row.learned_museum),
       restaurant: parseStoredValues(row.learned_restaurant),
+      shopping: parseStoredValues(row.learned_shopping),
     },
   });
 }
@@ -93,7 +96,7 @@ export async function GET(request: Request) {
   const row = await getD1()
     .prepare(`
       SELECT slow_pace, avoid_queues, no_fish, markets,
-             learned_cafe, learned_evening, learned_museum, learned_restaurant
+             learned_cafe, learned_evening, learned_museum, learned_restaurant, learned_shopping
       FROM user_profiles
       WHERE user_id = ?
     `)
@@ -123,9 +126,9 @@ export async function PUT(request: Request) {
     .prepare(`
       INSERT INTO user_profiles (
         user_id, slow_pace, avoid_queues, no_fish, markets,
-        learned_cafe, learned_evening, learned_museum, learned_restaurant,
+        learned_cafe, learned_evening, learned_museum, learned_restaurant, learned_shopping,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       ON CONFLICT(user_id) DO UPDATE SET
         slow_pace = excluded.slow_pace,
         avoid_queues = excluded.avoid_queues,
@@ -135,6 +138,7 @@ export async function PUT(request: Request) {
         learned_evening = excluded.learned_evening,
         learned_museum = excluded.learned_museum,
         learned_restaurant = excluded.learned_restaurant,
+        learned_shopping = excluded.learned_shopping,
         updated_at = CURRENT_TIMESTAMP
     `)
     .bind(
@@ -147,6 +151,7 @@ export async function PUT(request: Request) {
       JSON.stringify(profile.learned.evening),
       JSON.stringify(profile.learned.museum),
       JSON.stringify(profile.learned.restaurant),
+      JSON.stringify(profile.learned.shopping),
     )
     .run();
 

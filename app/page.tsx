@@ -553,6 +553,25 @@ export default function Home() {
     }));
   }
 
+  function baseSearchQuery(kind: PreferenceCategory) {
+    return kind === 'restaurant'
+      ? 'ristorante'
+      : kind === 'museum'
+        ? 'museo'
+        : kind === 'shopping'
+          ? 'negozi'
+          : kind === 'evening'
+            ? 'intrattenimento serale'
+            : 'caffè';
+  }
+
+  function savedSearchPreferences(kind: PreferenceCategory) {
+    const saved = [...profile.learned[kind]];
+    if (kind === 'restaurant' && profile.noFish) saved.push('senza pesce');
+    if (kind === 'shopping' && profile.markets) saved.push('mercato locale');
+    return saved.filter((value, index, values) => values.indexOf(value) === index);
+  }
+
   function rememberProfileSignals(message: string) {
     const signals: string[] = [];
     const updates: Partial<Pick<Profile, 'avoidQueues' | 'markets' | 'noFish' | 'slowPace'>> = {};
@@ -579,10 +598,9 @@ export default function Home() {
   }
 
   function askForSearchDetails(kind: PendingSearch['kind'], origin = coords, openNow = true) {
-    setPendingSearch({ kind, origin, openNow });
-    const remembered = profile.learned[kind];
+    const saved = savedSearchPreferences(kind);
 
-    if (remembered.length) {
+    if (saved.length) {
       const context = kind === 'restaurant'
         ? 'Per mangiare'
         : kind === 'museum'
@@ -592,9 +610,13 @@ export default function Home() {
           : kind === 'evening'
             ? 'Per la sera'
             : 'Per una pausa caffè';
-      reply(`${context} ricordo: ${remembered.join(', ')}. Le tengo o oggi vuoi qualcosa di diverso?`, 'Preferenze dal tuo profilo');
+      setPendingSearch(null);
+      append('assistant', `${context} uso direttamente le tue preferenze: ${saved.join(', ')}.`, 'Preferenze applicate dal tuo profilo');
+      void searchPlaces([baseSearchQuery(kind), ...saved].join(' '), origin, openNow);
       return;
     }
+
+    setPendingSearch({ kind, origin, openNow });
 
     if (kind === 'restaurant') {
       reply(
@@ -636,22 +658,13 @@ export default function Home() {
       : isAffirmingPreferenceAnswer(answer)
         ? remembered.join(' ')
         : answer.trim();
-    const base = search.kind === 'restaurant'
-      ? 'ristorante'
-      : search.kind === 'museum'
-        ? 'museo'
-        : search.kind === 'shopping'
-          ? 'negozi'
-        : search.kind === 'evening'
-          ? 'intrattenimento serale'
-          : 'caffè';
     const dietaryPreference = search.kind === 'restaurant' && profile.noFish ? 'senza pesce' : '';
     const marketPreference = search.kind === 'shopping'
       && profile.markets
       && (isNoPreferenceAnswer(answer) || isAffirmingPreferenceAnswer(answer))
       ? 'mercato locale'
       : '';
-    return [base, detail, dietaryPreference, marketPreference].filter(Boolean).join(' ');
+    return [baseSearchQuery(search.kind), detail, dietaryPreference, marketPreference].filter(Boolean).join(' ');
   }
 
   function interpretMessage(value: string) {
