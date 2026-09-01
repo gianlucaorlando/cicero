@@ -113,6 +113,7 @@ type PendingSearch = {
 type SearchRequest = {
   kind: SearchKind;
   openNow: boolean;
+  autoAddCount?: 2 | 3;
 };
 
 const initialMessages: Message[] = [
@@ -248,6 +249,28 @@ function firstTextIndex(value: string, terms: string[]) {
   }, -1);
 }
 
+function requestedDurationMinutes(value: string) {
+  const numberWords: Record<string, number> = {
+    un: 1,
+    una: 1,
+    uno: 1,
+    due: 2,
+    tre: 3,
+    quattro: 4,
+    cinque: 5,
+    sei: 6,
+    sette: 7,
+    otto: 8,
+  };
+  const hours = value.match(/\b(\d+(?:[.,]\d+)?|un|una|uno|due|tre|quattro|cinque|sei|sette|otto)\s*(?:ore|ora)\b/);
+  if (hours) {
+    const raw = hours[1].replace(',', '.');
+    return (numberWords[raw] ?? Number(raw)) * 60;
+  }
+  const minutes = value.match(/\b(\d+)\s*(?:minuti|minuto)\b/);
+  return minutes ? Number(minutes[1]) : null;
+}
+
 function extractSearchRequests(value: string): SearchRequest[] {
   const foodPreferenceOnly = /(non mangio|non posso mangiare|evita|senza).{0,12}pesce/.test(value)
     && !value.includes('ristor')
@@ -261,18 +284,42 @@ function extractSearchRequests(value: string): SearchRequest[] {
   const explicitEveningIndex = firstTextIndex(value, ['dopocena', 'dopo cena', 'intratten', 'musica dal vivo', 'concerto', 'teatro', 'cocktail', 'discoteca', 'ballare']);
   const genericEveningIndex = restaurantIndex < 0 ? firstTextIndex(value, ['serata', 'stasera']) : -1;
   const eveningIndex = explicitEveningIndex >= 0 ? explicitEveningIndex : genericEveningIndex;
+  const durationMinutes = requestedDurationMinutes(value);
+  const automaticLandmarkCount = landmarkIndex >= 0
+    && /(proponi tu|organizz|prepara|crea).{0,30}(percorso|itinerario)|(?:percorso|itinerario).{0,20}(automatic|tu)/.test(value)
+    ? durationMinutes != null && durationMinutes > 180 ? 3 : 2
+    : undefined;
 
-  return [
+  const requests: Array<SearchRequest & { index: number }> = [
     { kind: 'restaurant' as const, index: restaurantIndex, openNow: !/(cena|stasera|domani)/.test(value) },
     { kind: 'cafe' as const, index: cafeIndex, openNow: true },
     { kind: 'museum' as const, index: museumIndex, openNow: true },
-    { kind: 'landmark' as const, index: landmarkIndex, openNow: true },
+    { kind: 'landmark' as const, index: landmarkIndex, openNow: true, autoAddCount: automaticLandmarkCount },
     { kind: 'shopping' as const, index: shoppingIndex, openNow: !/\b(domani|stasera)\b/.test(value) },
     { kind: 'evening' as const, index: eveningIndex, openNow: false },
-  ]
+  ];
+
+  return requests
     .filter((request) => request.index >= 0)
     .sort((left, right) => left.index - right.index)
-    .map(({ kind, openNow }) => ({ kind, openNow }));
+    .map(({ kind, openNow, autoAddCount }) => ({ kind, openNow, autoAddCount }));
+}
+
+function selectAutomaticLandmarks(candidates: PlaceCandidate[], count: number, origin: { lat: number; lng: number }) {
+  const pool = [...candidates]
+    .sort((left, right) => (right.userRatingCount || 0) - (left.userRatingCount || 0) || (right.rating || 0) - (left.rating || 0))
+    .slice(0, Math.min(candidates.length, count + 3));
+  const ordered: PlaceCandidate[] = [];
+  let cursor = origin;
+
+  while (ordered.length < count && pool.length) {
+    pool.sort((left, right) => distanceMeters(cursor, left) - distanceMeters(cursor, right));
+    const next = pool.shift()!;
+    ordered.push(next);
+    cursor = { lat: next.lat, lng: next.lng };
+  }
+
+  return ordered;
 }
 
 export default function Home() {
@@ -497,7 +544,7 @@ export default function Home() {
     }, delay);
   }
 
-  async function searchPlaces(query: string, origin = coords, openNow = true) {
+  async function searchPlaces(query: string, origin = coords, openNow = true, autoAddCount: 0 | 2 | 3 = 0) {
     setThinking(true);
     setPlaceCandidates([]);
     try {
@@ -530,6 +577,13 @@ export default function Home() {
         ...place,
         distanceMeters: distanceMeters(origin, place),
       }));
+
+      if (autoAddCount) {
+        const selected = selectAutomaticLandmarks(candidates, autoAddCount, origin);
+        await addPlacesAutomatically(selected, origin);
+        return;
+      }
+
       setPlaceCandidates(candidates);
       append(
         'assistant',
@@ -545,6 +599,69 @@ export default function Home() {
       append('assistant', 'Non riesco a raggiungere Places. Il tuo itinerario resta invariato.', 'Errore di connessione');
     } finally {
       setThinking(false);
+    }
+  }
+
+  async function addPlacesAutomatically(candidates: PlaceCandidate[], origin: { lat: number; lng: number }) {
+    const verified = (await Promise.all(candidates.map(async (candidate) => {
+      try {
+        const response = await fetch(`/api/places/details?id=${encodeURIComponent(candidate.id)}`);
+        const data = await response.json();
+        return response.ok && data.place ? { candidate, place: data.place } : null;
+      } catch {
+        return null;
+      }
+    }))).filter((result): result is NonNullable<typeof result> => result != null);
+
+    let previous = origin;
+    const additions = verified.map(({ candidate, place }) => {
+      const legDistance = distanceMeters(previous, place);
+      previous = { lat: place.lat, lng: place.lng };
+      const openLabel = place.openNow === true ? 'aperto ora' : place.openNow === false ? 'chiuso ora' : 'orario non confermato';
+      const rating = typeof place.rating === 'number' ? `${place.rating.toFixed(1)} (${place.userRatingCount || 0})` : null;
+      return {
+        id: candidate.id,
+        placeId: candidate.id,
+        title: place.name,
+        detail: [humanDistance(legDistance), openLabel, rating].filter(Boolean).join(' · '),
+        kind: 'place' as const,
+        primaryType: place.primaryType,
+        address: place.address,
+        lat: place.lat,
+        lng: place.lng,
+        googleMapsUri: place.googleMapsUri,
+        source: 'google_places' as const,
+      };
+    });
+
+    setItinerary((current) => {
+      const existing = new Set(current.map((stop) => stop.placeId));
+      const newStops = additions
+        .filter((stop) => !existing.has(stop.placeId))
+        .map((stop, index) => ({ ...stop, time: nextStopTime(current.length + index) }));
+      return [...current, ...newStops];
+    });
+    setPlaceCandidates([]);
+
+    const nextRequest = searchQueueRef.current.shift();
+    const lastPlace = additions.at(-1);
+    append(
+      'assistant',
+      additions.length
+        ? `Ho aggiunto automaticamente ${additions.length} monumenti verificati e li ho ordinati dal punto di partenza. Ora dimmi cosa vorresti mangiare.`
+        : 'Non sono riuscito a verificare monumenti adatti nelle vicinanze, quindi non ho aggiunto tappe inventate. Possiamo comunque scegliere dove mangiare.',
+      additions.length ? 'Percorso monumenti pronto · ora scegliamo il cibo' : 'Nessun monumento aggiunto',
+    );
+
+    if (nextRequest) {
+      const nextOrigin = lastPlace ? { lat: lastPlace.lat, lng: lastPlace.lng } : origin;
+      window.setTimeout(() => askForSearchDetails(
+        nextRequest.kind,
+        nextOrigin,
+        nextRequest.openNow,
+        nextRequest.kind === 'restaurant',
+        nextRequest.autoAddCount,
+      ), 0);
     }
   }
 
@@ -587,7 +704,7 @@ export default function Home() {
       );
 
       if (nextRequest) {
-        askForSearchDetails(nextRequest.kind, { lat: place.lat, lng: place.lng }, nextRequest.openNow);
+        askForSearchDetails(nextRequest.kind, { lat: place.lat, lng: place.lng }, nextRequest.openNow, false, nextRequest.autoAddCount);
       }
     } catch {
       append('assistant', `Non riesco a verificare i dettagli di ${candidate.name}; non l’ho aggiunto.`, 'Itinerario invariato');
@@ -600,7 +717,7 @@ export default function Home() {
     const [first, ...rest] = requests;
     if (!first) return;
     searchQueueRef.current = rest;
-    askForSearchDetails(first.kind, origin, first.openNow);
+    askForSearchDetails(first.kind, origin, first.openNow, false, first.autoAddCount);
   }
 
   function handlePrompt(prompt: string) {
@@ -697,19 +814,31 @@ export default function Home() {
     return signals;
   }
 
-  function askForSearchDetails(kind: SearchKind, origin = coords, openNow = true) {
+  function askForSearchDetails(
+    kind: SearchKind,
+    origin = coords,
+    openNow = true,
+    forceDetails = false,
+    autoAddCount?: 2 | 3,
+  ) {
     setAwaitingItineraryConsent(false);
 
     if (kind === 'landmark') {
       setPendingSearch(null);
-      append('assistant', 'Parto dai monumenti, come hai chiesto. Ti mostro le opzioni principali vicine al punto di partenza; dopo la prima scelta passeremo a dove mangiare.', 'Prima i monumenti · poi il cibo');
-      void searchPlaces(baseSearchQuery(kind), origin, openNow);
+      append(
+        'assistant',
+        autoAddCount
+          ? `Parto dai monumenti, come hai chiesto: ne seleziono ${autoAddCount}, verifico i dettagli e costruisco il percorso. Poi ti chiedo cosa mangiare.`
+          : 'Parto dai monumenti, come hai chiesto. Ti mostro le opzioni principali vicine al punto di partenza; dopo la prima scelta passeremo a dove mangiare.',
+        autoAddCount ? 'Creo il percorso automaticamente' : 'Prima i monumenti · poi il cibo',
+      );
+      void searchPlaces(baseSearchQuery(kind), origin, openNow, autoAddCount || 0);
       return;
     }
 
     const saved = savedSearchPreferences(kind);
 
-    if (saved.length) {
+    if (saved.length && !forceDetails) {
       const context = kind === 'restaurant'
         ? 'Per mangiare'
         : kind === 'museum'
@@ -729,10 +858,14 @@ export default function Home() {
 
     if (kind === 'restaurant') {
       reply(
-        profile.noFish
-          ? 'Che tipo di cucina ti va? Tengo già fuori il pesce; dimmi pure se hai altre preferenze alimentari.'
-          : 'Che tipo di cucina ti va? Dimmi anche se hai preferenze o esigenze alimentari.',
-        profile.noFish ? 'Pesce escluso dal tuo profilo' : 'Una risposta, poi cerco qui vicino',
+        forceDetails && saved.length
+          ? `Dopo i monumenti, cosa ti va di mangiare? Ricordo che di solito scegli ${saved.join(', ')}: posso cercare quello oppure qualcosa di diverso.`
+          : profile.noFish
+            ? 'Che tipo di cucina ti va? Tengo già fuori il pesce; dimmi pure se hai altre preferenze alimentari.'
+            : 'Che tipo di cucina ti va? Dimmi anche se hai preferenze o esigenze alimentari.',
+        forceDetails && saved.length
+          ? 'La preferenza è disponibile, ma la scelta resta tua'
+          : profile.noFish ? 'Pesce escluso dal tuo profilo' : 'Una risposta, poi cerco qui vicino',
       );
       return;
     }
