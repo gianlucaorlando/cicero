@@ -12,6 +12,13 @@ type MapStop = {
   lng?: number;
 };
 
+type MapCandidate = {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+};
+
 type MapLibreModule = typeof import('maplibre-gl');
 
 function routeFeature(points: Array<[number, number]>) {
@@ -31,11 +38,15 @@ export function MapPicker({
   coords,
   onChange,
   stops,
+  candidates,
+  onSelectCandidate,
   focusToken,
 }: {
   coords: Coordinates;
   onChange: (coords: Coordinates) => void;
   stops: MapStop[];
+  candidates: MapCandidate[];
+  onSelectCandidate: (candidateId: string) => void;
   focusToken: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -43,11 +54,14 @@ export function MapPicker({
   const maplibreRef = useRef<MapLibreModule | null>(null);
   const markerRef = useRef<Marker | null>(null);
   const stopMarkersRef = useRef<Marker[]>([]);
+  const candidateMarkersRef = useRef<Marker[]>([]);
   const onChangeRef = useRef(onChange);
+  const onSelectCandidateRef = useRef(onSelectCandidate);
   const coordsRef = useRef(coords);
   const stopsRef = useRef(stops);
+  const candidatesRef = useRef(candidates);
 
-  const updateItineraryOverlay = useCallback((fitRoute = false) => {
+  const updateItineraryOverlay = useCallback((fitTarget: 'candidates' | 'route' | false = false) => {
     const map = mapRef.current;
     const maplibre = maplibreRef.current;
     if (!map || !maplibre) return;
@@ -77,14 +91,40 @@ export function MapPicker({
         .addTo(map);
     });
 
-    if (!fitRoute) return;
-    if (routePoints.length === 1) {
-      map.easeTo({ center: routePoints[0], zoom: Math.max(map.getZoom(), 15.2), duration: 550 });
+    const validCandidates = candidatesRef.current.filter(
+      (candidate) => Number.isFinite(candidate.lat) && Number.isFinite(candidate.lng),
+    );
+    candidateMarkersRef.current.forEach((marker) => marker.remove());
+    candidateMarkersRef.current = validCandidates.map((candidate, index) => {
+      const element = document.createElement('button');
+      element.type = 'button';
+      element.className = 'map-candidate-marker';
+      element.title = `${String.fromCharCode(65 + index)}. ${candidate.name}`;
+      element.setAttribute('aria-label', `Seleziona ${candidate.name} come tappa`);
+      const label = document.createElement('span');
+      label.className = 'map-candidate-pin-label';
+      label.textContent = String.fromCharCode(65 + index);
+      element.appendChild(label);
+      element.addEventListener('click', (event) => {
+        event.stopPropagation();
+        onSelectCandidateRef.current(candidate.id);
+      });
+      return new maplibre.Marker({ element, anchor: 'bottom' })
+        .setLngLat([candidate.lng, candidate.lat])
+        .addTo(map);
+    });
+
+    if (!fitTarget) return;
+    const fitPoints: Array<[number, number]> = fitTarget === 'candidates' && validCandidates.length
+      ? validCandidates.map((candidate) => [candidate.lng, candidate.lat])
+      : routePoints;
+    if (fitPoints.length === 1) {
+      map.easeTo({ center: fitPoints[0], zoom: Math.max(map.getZoom(), fitTarget === 'candidates' ? 15.7 : 15.2), duration: 550 });
       return;
     }
 
     const bounds = new maplibre.LngLatBounds();
-    routePoints.forEach((point) => bounds.extend(point));
+    fitPoints.forEach((point) => bounds.extend(point));
     const height = map.getContainer().clientHeight;
     map.fitBounds(bounds, {
       padding: {
@@ -103,14 +143,23 @@ export function MapPicker({
   }, [onChange]);
 
   useEffect(() => {
+    onSelectCandidateRef.current = onSelectCandidate;
+  }, [onSelectCandidate]);
+
+  useEffect(() => {
     coordsRef.current = coords;
     stopsRef.current = stops;
     markerRef.current?.setLngLat([coords.lng, coords.lat]);
-    updateItineraryOverlay(true);
+    updateItineraryOverlay(candidatesRef.current.length ? 'candidates' : 'route');
   }, [coords, stops, updateItineraryOverlay]);
 
   useEffect(() => {
-    if (focusToken > 0) updateItineraryOverlay(true);
+    candidatesRef.current = candidates;
+    updateItineraryOverlay(candidates.length ? 'candidates' : 'route');
+  }, [candidates, updateItineraryOverlay]);
+
+  useEffect(() => {
+    if (focusToken > 0) updateItineraryOverlay('route');
   }, [focusToken, updateItineraryOverlay]);
 
   useEffect(() => {
@@ -204,15 +253,16 @@ export function MapPicker({
       });
 
       markerRef.current = marker;
-      updateItineraryOverlay(true);
-      map.once('style.load', () => updateItineraryOverlay(true));
+      updateItineraryOverlay(candidatesRef.current.length ? 'candidates' : 'route');
+      map.once('style.load', () => updateItineraryOverlay(candidatesRef.current.length ? 'candidates' : 'route'));
 
       let resizeTimer: number | undefined;
       const resizeObserver = new ResizeObserver(() => {
         map.resize();
         if (resizeTimer) window.clearTimeout(resizeTimer);
         resizeTimer = window.setTimeout(() => {
-          if (stopsRef.current.length > 0) updateItineraryOverlay(true);
+          if (candidatesRef.current.length > 0) updateItineraryOverlay('candidates');
+          else if (stopsRef.current.length > 0) updateItineraryOverlay('route');
         }, 380);
       });
       resizeObserver.observe(containerRef.current);
@@ -228,6 +278,8 @@ export function MapPicker({
       disposed = true;
       stopMarkersRef.current.forEach((marker) => marker.remove());
       stopMarkersRef.current = [];
+      candidateMarkersRef.current.forEach((marker) => marker.remove());
+      candidateMarkersRef.current = [];
       markerRef.current?.remove();
       mapRef.current?.remove();
       markerRef.current = null;
@@ -237,5 +289,5 @@ export function MapPicker({
     // The map is created once; coordinate and itinerary changes are handled above.
   }, [updateItineraryOverlay]);
 
-  return <div ref={containerRef} className="map-canvas" aria-label="Mappa interattiva con percorso e pin trascinabile" />;
+  return <div ref={containerRef} className="map-canvas" aria-label="Mappa interattiva con percorso, risultati selezionabili e pin trascinabile" />;
 }

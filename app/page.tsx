@@ -806,8 +806,18 @@ export default function Home() {
 
   return (
     <main className={`app-shell ${mapOpen ? '' : 'map-collapsed'}`}>
-      <section className={`map-stage ${itinerary.length ? 'has-route' : ''}`} aria-label="Mappa dell’itinerario">
-        <MapPicker coords={coords} onChange={movePin} stops={itinerary} focusToken={routeFocusToken} />
+      <section className={`map-stage ${itinerary.length ? 'has-route' : ''} ${placeCandidates.length ? 'has-candidates' : ''}`} aria-label="Mappa dell’itinerario">
+        <MapPicker
+          coords={coords}
+          onChange={movePin}
+          stops={itinerary}
+          candidates={placeCandidates}
+          onSelectCandidate={(candidateId) => {
+            const candidate = placeCandidates.find((place) => place.id === candidateId);
+            if (candidate && selectingPlace === null) void addPlace(candidate);
+          }}
+          focusToken={routeFocusToken}
+        />
         <div className="map-wash" aria-hidden="true" />
 
         <header className="topbar">
@@ -844,7 +854,12 @@ export default function Home() {
           <span className="map-search-hint"><Move /> Tieni premuto e trascina il pin</span>
         </form>
 
-        {itinerary.length > 0 && (
+        {placeCandidates.length > 0 ? (
+          <div className="candidate-map-summary">
+            <MapPin />
+            <div><strong>{placeCandidates.length} proposte sulla mappa</strong><span>Tocca un pin oppure scegli dall’elenco</span></div>
+          </div>
+        ) : itinerary.length > 0 && (
           <button className="route-summary" type="button" onClick={() => setRouteFocusToken((value) => value + 1)} aria-label="Centra tutto il percorso sulla mappa">
             <span className="route-summary-icon"><Route /></span>
             <span className="route-summary-copy">
@@ -897,9 +912,10 @@ export default function Home() {
                 <Badge variant="outline">live</Badge>
               </div>
               <div className="place-options">
-                {placeCandidates.map((place) => (
+                {placeCandidates.map((place, index) => (
                   <div className="place-option" key={place.id}>
                     <button type="button" onClick={() => void addPlace(place)} disabled={selectingPlace !== null}>
+                      <span className="place-map-index" aria-hidden="true">{String.fromCharCode(65 + index)}</span>
                       <span className="place-option-copy">
                         <strong>{place.name}</strong>
                         <small>{humanDistance(place.distanceMeters)} · {place.address}</small>

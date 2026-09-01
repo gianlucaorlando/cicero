@@ -136,6 +136,50 @@ button { -webkit-tap-highlight-color: transparent; }
   line-height: 1;
   pointer-events: none;
 }
+.map-candidate-marker {
+  position: relative;
+  width: 42px;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  filter: drop-shadow(0 6px 8px rgba(46, 63, 38, .3));
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.map-candidate-pin-label {
+  position: absolute;
+  top: 0;
+  left: 5px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 3px solid #fffdf7;
+  border-radius: 50%;
+  background: #65785c;
+  color: white;
+  box-shadow: 0 4px 12px rgba(46,63,38,.25);
+  font-size: 11px;
+  font-weight: 850;
+  transition: transform .15s ease, background .15s ease;
+}
+.map-candidate-pin-label::after {
+  position: absolute;
+  right: 7px;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  border-right: 3px solid #fffdf7;
+  border-bottom: 3px solid #fffdf7;
+  background: #65785c;
+  content: '';
+  transform: rotate(45deg);
+}
+.map-candidate-marker:active .map-candidate-pin-label { background: #4f6548; transform: scale(.92); }
+.map-candidate-marker:focus-visible { outline: none; }
+.map-candidate-marker:focus-visible .map-candidate-pin-label { outline: 4px solid rgba(101,120,92,.3); outline-offset: 2px; }
 .map-canvas .maplibregl-ctrl-attrib { font-size: 8px; opacity: .72; }
 
 .map-wash {
@@ -357,6 +401,29 @@ button { -webkit-tap-highlight-color: transparent; }
 .route-steps i + em { margin-left: -7px; }
 .route-steps .route-step-origin { background: #6d4333; }
 .route-step-origin svg { width: 10px; }
+.candidate-map-summary {
+  position: absolute;
+  z-index: 2;
+  right: 72px;
+  bottom: 28px;
+  left: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 9px 12px;
+  border: 1px solid rgba(72,91,64,.2);
+  border-radius: 18px;
+  background: rgba(250,252,246,.97);
+  color: #384633;
+  box-shadow: 0 12px 32px rgba(45,62,39,.18);
+  backdrop-filter: blur(14px);
+  animation: rise .3s ease-out both;
+}
+.candidate-map-summary > svg { flex: 0 0 auto; width: 20px; color: #65785c; }
+.candidate-map-summary div { display: flex; min-width: 0; flex-direction: column; }
+.candidate-map-summary strong { font-size: 12px; line-height: 1.2; }
+.candidate-map-summary span { margin-top: 2px; color: #75816f; font-size: 9px; }
 .spin { animation: spin .85s linear infinite; }
 
 .conversation {
@@ -530,6 +597,19 @@ h1 {
 .place-option > button:active { background: #f0f4eb; transform: scale(.99); }
 .place-option > button:disabled { cursor: wait; opacity: .7; }
 .place-option-copy { display: flex; min-width: 0; flex-direction: column; }
+.place-option-copy { flex: 1; }
+.place-map-index {
+  display: grid;
+  place-items: center;
+  flex: 0 0 25px;
+  width: 25px;
+  height: 25px;
+  border-radius: 9px;
+  background: #65785c;
+  color: white;
+  font-size: 10px;
+  font-weight: 820;
+}
 .place-option-copy strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .place-option-copy small { margin-top: 2px; overflow: hidden; color: #7d8878; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .place-review-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 9px; margin-top: 6px; color: #695e54; font-size: 9px; }
@@ -721,11 +801,14 @@ h1 {
   .map-stage { transition: height .35s ease, min-height .35s ease; }
   .map-stage.has-route { height: 56svh; min-height: min(430px, 56svh); }
   .map-stage.has-route + .conversation { height: 48svh; min-height: min(430px, 48svh); }
-  .map-stage.has-route .map-search-hint { display: none; }
+  .map-stage.has-candidates:not(.has-route) { height: 52svh; min-height: min(400px, 52svh); }
+  .map-stage.has-candidates:not(.has-route) + .conversation { height: 52svh; min-height: min(430px, 52svh); }
+  .map-stage.has-route .map-search-hint,
+  .map-stage.has-candidates .map-search-hint { display: none; }
   .map-collapsed .map-stage { height: 135px; min-height: 135px; }
   .map-collapsed .map-canvas { opacity: .66; }
   .map-collapsed .conversation { height: calc(100svh - 115px); }
-  .map-collapsed .context-strip, .map-collapsed .map-search, .map-collapsed .locate-button, .map-collapsed .route-summary { display: none; }
+  .map-collapsed .context-strip, .map-collapsed .map-search, .map-collapsed .locate-button, .map-collapsed .route-summary, .map-collapsed .candidate-map-summary { display: none; }
 }
 
 @media (min-width: 820px) {
