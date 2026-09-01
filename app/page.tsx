@@ -102,13 +102,18 @@ type SavedRoute = {
 
 type ManualPreferenceKey = 'avoidQueues' | 'markets' | 'noFish' | 'slowPace';
 
+type SearchKind = PreferenceCategory | 'landmark';
+
 type PendingSearch = {
   kind: PreferenceCategory;
   origin: { lat: number; lng: number };
   openNow: boolean;
 };
 
-type SearchRequest = Pick<PendingSearch, 'kind' | 'openNow'>;
+type SearchRequest = {
+  kind: SearchKind;
+  openNow: boolean;
+};
 
 const initialMessages: Message[] = [
   {
@@ -121,9 +126,10 @@ const initialMessages: Message[] = [
 
 const PROFILE_STORAGE_KEY = 'cicero-profile-v2';
 
-const preferenceCategoryLabels: Record<PreferenceCategory, string> = {
+const preferenceCategoryLabels: Record<SearchKind, string> = {
   cafe: 'Caffè',
   evening: 'Serata',
+  landmark: 'Monumenti',
   museum: 'Musei',
   restaurant: 'Ristoranti',
   shopping: 'Shopping',
@@ -250,6 +256,7 @@ function extractSearchRequests(value: string): SearchRequest[] {
   const restaurantIndex = foodPreferenceOnly ? -1 : firstTextIndex(value, ['ristor', 'pranzo', 'mang', 'cena']);
   const cafeIndex = firstTextIndex(value, ['caff']);
   const museumIndex = firstTextIndex(value, ['muse', 'mostra', 'arte']);
+  const landmarkIndex = firstTextIndex(value, ['monument', 'luoghi storici', 'attrazioni principali', 'principali attrazioni']);
   const shoppingIndex = firstTextIndex(value, ['shopping', 'negoz', 'boutique', 'acquist', 'comprare', 'outlet', 'centro commerciale', 'vintage']);
   const explicitEveningIndex = firstTextIndex(value, ['dopocena', 'dopo cena', 'intratten', 'musica dal vivo', 'concerto', 'teatro', 'cocktail', 'discoteca', 'ballare']);
   const genericEveningIndex = restaurantIndex < 0 ? firstTextIndex(value, ['serata', 'stasera']) : -1;
@@ -259,6 +266,7 @@ function extractSearchRequests(value: string): SearchRequest[] {
     { kind: 'restaurant' as const, index: restaurantIndex, openNow: !/(cena|stasera|domani)/.test(value) },
     { kind: 'cafe' as const, index: cafeIndex, openNow: true },
     { kind: 'museum' as const, index: museumIndex, openNow: true },
+    { kind: 'landmark' as const, index: landmarkIndex, openNow: true },
     { kind: 'shopping' as const, index: shoppingIndex, openNow: !/\b(domani|stasera)\b/.test(value) },
     { kind: 'evening' as const, index: eveningIndex, openNow: false },
   ]
@@ -643,11 +651,13 @@ export default function Home() {
     }));
   }
 
-  function baseSearchQuery(kind: PreferenceCategory) {
+  function baseSearchQuery(kind: SearchKind) {
     return kind === 'restaurant'
       ? 'ristorante'
       : kind === 'museum'
         ? 'museo'
+        : kind === 'landmark'
+          ? 'monumenti e attrazioni storiche principali'
         : kind === 'shopping'
           ? 'negozi'
           : kind === 'evening'
@@ -687,8 +697,16 @@ export default function Home() {
     return signals;
   }
 
-  function askForSearchDetails(kind: PendingSearch['kind'], origin = coords, openNow = true) {
+  function askForSearchDetails(kind: SearchKind, origin = coords, openNow = true) {
     setAwaitingItineraryConsent(false);
+
+    if (kind === 'landmark') {
+      setPendingSearch(null);
+      append('assistant', 'Parto dai monumenti, come hai chiesto. Ti mostro le opzioni principali vicine al punto di partenza; dopo la prima scelta passeremo a dove mangiare.', 'Prima i monumenti · poi il cibo');
+      void searchPlaces(baseSearchQuery(kind), origin, openNow);
+      return;
+    }
+
     const saved = savedSearchPreferences(kind);
 
     if (saved.length) {
