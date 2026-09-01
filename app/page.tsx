@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import {
+  Bookmark,
   Check,
   ChevronRight,
   CloudRain,
@@ -19,6 +20,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Sun,
+  Trash2,
   Umbrella,
   UserRound,
   X,
@@ -85,6 +87,17 @@ type PlaceCandidate = {
     ratingImageUrl: string;
     webUrl: string;
   } | null;
+};
+
+type SavedRoute = {
+  id: string;
+  name: string;
+  city: string;
+  locationLabel: string;
+  origin: { lat: number; lng: number };
+  stops: Stop[];
+  createdAt: string;
+  updatedAt: string;
 };
 
 type ManualPreferenceKey = 'avoidQueues' | 'markets' | 'noFish' | 'slowPace';
@@ -165,6 +178,32 @@ function itineraryDistance(origin: { lat: number; lng: number }, stops: Stop[]) 
     previous = next;
   }
   return total;
+}
+
+function itinerarySignature(city: string, locationLabel: string, origin: { lat: number; lng: number }, stops: Stop[]) {
+  return JSON.stringify({
+    city,
+    locationLabel,
+    origin: { lat: Number(origin.lat.toFixed(6)), lng: Number(origin.lng.toFixed(6)) },
+    stops: stops.map((stop) => ({
+      id: stop.id,
+      time: stop.time,
+      title: stop.title,
+      detail: stop.detail,
+      placeId: stop.placeId,
+      address: stop.address,
+      lat: stop.lat,
+      lng: stop.lng,
+    })),
+  });
+}
+
+function savedRouteDate(value: string) {
+  const normalized = value.includes('T') ? value : `${value.replace(' ', 'T')}Z`;
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime())
+    ? value.slice(0, 10)
+    : date.toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function nextStopTime(index: number) {
@@ -256,6 +295,13 @@ export default function Home() {
   const [profileStatus, setProfileStatus] = useState<'error' | 'loading' | 'saved' | 'saving' | 'signed-out' | 'unconfigured'>('loading');
   const [profileOpen, setProfileOpen] = useState(false);
   const [routeOpen, setRouteOpen] = useState(false);
+  const [savedRoutesOpen, setSavedRoutesOpen] = useState(false);
+  const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>([]);
+  const [savedRoutesStatus, setSavedRoutesStatus] = useState<'error' | 'idle' | 'loading'>('idle');
+  const [routeSaveStatus, setRouteSaveStatus] = useState<'error' | 'idle' | 'saving'>('idle');
+  const [activeSavedRouteId, setActiveSavedRouteId] = useState<string | null>(null);
+  const [savedRouteSignature, setSavedRouteSignature] = useState<string | null>(null);
+  const [deletingRouteId, setDeletingRouteId] = useState<string | null>(null);
   const [locationOpen, setLocationOpen] = useState(false);
   const [locating, setLocating] = useState(false);
   const [mapOpen, setMapOpen] = useState(true);
@@ -286,6 +332,8 @@ export default function Home() {
             : 'Preferenze non sincronizzate';
   const routeDistance = itineraryDistance(coords, itinerary);
   const googleMapsUrl = googleMapsRouteUrl(coords, itinerary);
+  const currentRouteSignature = itinerarySignature(city, locationLabel, coords, itinerary);
+  const currentRouteSaved = Boolean(itinerary.length && savedRouteSignature === currentRouteSignature);
 
   useEffect(() => {
     if ('serviceWorker' in navigator) {
@@ -852,6 +900,106 @@ export default function Home() {
     setItinerary((current) => current.filter((stop) => stop.id !== stopId));
   }
 
+  async function itineraryHeaders(includeJson = false) {
+    const token = authStatus === 'authenticated' ? await getAccessToken() : null;
+    if (authStatus === 'authenticated' && !token) throw new Error('authentication required');
+    return {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(includeJson ? { 'Content-Type': 'application/json' } : {}),
+    };
+  }
+
+  async function loadSavedRoutes() {
+    if (authStatus === 'anonymous') return;
+    setSavedRoutesStatus('loading');
+    try {
+      const response = await fetch('/api/itineraries', { cache: 'no-store', headers: await itineraryHeaders() });
+      if (!response.ok) throw new Error('saved routes unavailable');
+      const data = await response.json() as { routes?: SavedRoute[] };
+      setSavedRoutes(Array.isArray(data.routes) ? data.routes : []);
+      setSavedRoutesStatus('idle');
+    } catch {
+      setSavedRoutesStatus('error');
+    }
+  }
+
+  function openSavedRoutes() {
+    setSavedRoutesOpen(true);
+    if (authStatus !== 'anonymous') void loadSavedRoutes();
+  }
+
+  async function saveCurrentRoute() {
+    if (!itinerary.length) return;
+    if (authStatus === 'anonymous') {
+      void loginWithAuth0();
+      return;
+    }
+
+    setRouteSaveStatus('saving');
+    try {
+      const dateLabel = new Date().toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
+      const response = await fetch('/api/itineraries', {
+        method: 'POST',
+        headers: await itineraryHeaders(true),
+        body: JSON.stringify({
+          id: activeSavedRouteId,
+          name: `${city} · ${dateLabel}`,
+          city,
+          locationLabel,
+          origin: coords,
+          stops: itinerary,
+        }),
+      });
+      if (!response.ok) throw new Error('route save failed');
+      const data = await response.json() as { route?: SavedRoute };
+      if (!data.route) throw new Error('route missing');
+      setActiveSavedRouteId(data.route.id);
+      setSavedRouteSignature(currentRouteSignature);
+      setSavedRoutes((current) => [data.route!, ...current.filter((route) => route.id !== data.route!.id)]);
+      setRouteSaveStatus('idle');
+      append('assistant', 'Percorso salvato nel tuo profilo. Potrai riaprirlo dalla raccolta in alto.', 'Itinerario sincronizzato');
+    } catch {
+      setRouteSaveStatus('error');
+    }
+  }
+
+  function loadSavedRoute(route: SavedRoute) {
+    setCity(route.city);
+    setCityInput(route.city);
+    setLocationLabel(route.locationLabel);
+    setAddressInput(route.locationLabel);
+    setCoords(route.origin);
+    setItinerary(route.stops);
+    setPlaceCandidates([]);
+    setActiveSavedRouteId(route.id);
+    setSavedRouteSignature(itinerarySignature(route.city, route.locationLabel, route.origin, route.stops));
+    setRouteSaveStatus('idle');
+    setSavedRoutesOpen(false);
+    setMapOpen(true);
+    setRouteFocusToken((value) => value + 1);
+    append('assistant', `Ho riaperto “${route.name}” con ${route.stops.length} ${route.stops.length === 1 ? 'tappa' : 'tappe'}.`, 'Percorso caricato dal profilo');
+  }
+
+  async function deleteSavedRoute(routeId: string) {
+    setDeletingRouteId(routeId);
+    try {
+      const response = await fetch(`/api/itineraries?id=${encodeURIComponent(routeId)}`, {
+        method: 'DELETE',
+        headers: await itineraryHeaders(),
+      });
+      if (!response.ok) throw new Error('route delete failed');
+      setSavedRoutes((current) => current.filter((route) => route.id !== routeId));
+      if (activeSavedRouteId === routeId) {
+        setActiveSavedRouteId(null);
+        setSavedRouteSignature(null);
+      }
+    } catch {
+      setSavedRoutesStatus('error');
+    } finally {
+      setDeletingRouteId(null);
+    }
+  }
+
   return (
     <main className={`app-shell ${mapOpen ? '' : 'map-collapsed'}`}>
       <section className={`map-stage ${itinerary.length ? 'has-route' : ''} ${placeCandidates.length ? 'has-candidates' : ''}`} aria-label="Mappa dell’itinerario">
@@ -873,9 +1021,15 @@ export default function Home() {
             <span className="brand-mark"><Navigation /></span>
             <span>Cicero</span>
           </a>
-          <Button className="profile-button" variant="outline" size="icon" aria-label="Apri il profilo" onClick={() => setProfileOpen(true)}>
-            {profileInitials || <UserRound />}
-          </Button>
+          <div className="topbar-actions">
+            <Button className="saved-routes-button" variant="outline" size="icon" aria-label="Apri i percorsi salvati" onClick={openSavedRoutes}>
+              <Bookmark />
+              {savedRoutes.length > 0 && <span>{savedRoutes.length}</span>}
+            </Button>
+            <Button className="profile-button" variant="outline" size="icon" aria-label="Apri il profilo" onClick={() => setProfileOpen(true)}>
+              {profileInitials || <UserRound />}
+            </Button>
+          </div>
         </header>
 
         <div className="context-strip" aria-label="Contesto attuale">
@@ -1116,13 +1270,62 @@ export default function Home() {
             </ol>
           </div>
 
-          {googleMapsUrl && (
-            <div className="route-export">
+          <div className="route-actions">
+            <button className={`route-save-button ${currentRouteSaved ? 'saved' : ''}`} type="button" onClick={() => void saveCurrentRoute()} disabled={routeSaveStatus === 'saving' || currentRouteSaved}>
+              {routeSaveStatus === 'saving' ? <LocateFixed className="spin" /> : currentRouteSaved ? <Check /> : authStatus === 'anonymous' ? <LogIn /> : <Bookmark />}
+              {routeSaveStatus === 'saving' ? 'Salvataggio…' : currentRouteSaved ? 'Percorso salvato' : authStatus === 'anonymous' ? 'Accedi per salvare' : routeSaveStatus === 'error' ? 'Riprova a salvare' : 'Salva percorso'}
+            </button>
+            {googleMapsUrl && (
+              <div className="route-export">
               <a href={googleMapsUrl} target="_blank" rel="noreferrer">
                 <Navigation /> Apri il percorso in Google Maps <ExternalLink />
               </a>
               <small>Google Maps ricalcolerà percorso pedonale, tempi e aperture nell’app.</small>
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={savedRoutesOpen} onOpenChange={setSavedRoutesOpen}>
+        <SheetContent className="saved-routes-sheet" side="bottom">
+          <SheetHeader>
+            <p className="sheet-kicker">La tua raccolta</p>
+            <SheetTitle>Percorsi salvati</SheetTitle>
+            <SheetDescription>Riapri un itinerario e ritrova le tappe sulla mappa.</SheetDescription>
+          </SheetHeader>
+
+          {authStatus === 'anonymous' ? (
+            <section className="saved-routes-login">
+              <span className="auth-avatar"><Bookmark /></span>
+              <div><strong>Accedi per salvare i percorsi</strong><small>Li ritroverai su tutti i tuoi dispositivi.</small></div>
+              <Button type="button" size="sm" onClick={() => void loginWithAuth0()}><LogIn /> Accedi</Button>
+            </section>
+          ) : savedRoutesStatus === 'loading' ? (
+            <p className="saved-routes-state"><LocateFixed className="spin" /> Carico i tuoi percorsi…</p>
+          ) : savedRoutesStatus === 'error' ? (
+            <button className="saved-routes-retry" type="button" onClick={() => void loadSavedRoutes()}>Non riesco a caricarli. Tocca per riprovare.</button>
+          ) : savedRoutes.length ? (
+            <div className="saved-routes-list">
+              {savedRoutes.map((route) => (
+                <article className="saved-route-card" key={route.id}>
+                  <button type="button" onClick={() => loadSavedRoute(route)}>
+                    <span className="saved-route-icon"><Route /></span>
+                    <span className="saved-route-copy">
+                      <small>{savedRouteDate(route.updatedAt)}</small>
+                      <strong>{route.name}</strong>
+                      <span>{route.locationLabel} · {route.stops.length} {route.stops.length === 1 ? 'tappa' : 'tappe'}</span>
+                    </span>
+                    <ChevronRight />
+                  </button>
+                  <button className="saved-route-delete" type="button" onClick={() => void deleteSavedRoute(route.id)} disabled={deletingRouteId === route.id} aria-label={`Elimina ${route.name}`}>
+                    {deletingRouteId === route.id ? <LocateFixed className="spin" /> : <Trash2 />}
+                  </button>
+                </article>
+              ))}
             </div>
+          ) : (
+            <div className="saved-routes-empty"><Bookmark /><strong>Nessun percorso salvato</strong><span>Apri il riepilogo di un itinerario e tocca “Salva percorso”.</span></div>
           )}
         </SheetContent>
       </Sheet>
