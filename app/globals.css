@@ -1094,3 +1094,14 @@ h1 {
   .memory-button { width: 34px; overflow: hidden; padding: 0 8px !important; }
   .quick-prompts { margin-left: -15px; margin-right: -15px; padding-left: 15px; padding-right: 15px; }
 }
+
+.mic-button.listening {
+  color: var(--primary);
+  background: var(--accent);
+  animation: mic-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--primary) 35%, transparent); }
+  50% { box-shadow: 0 0 0 8px color-mix(in oklch, var(--primary) 0%, transparent); }
+}

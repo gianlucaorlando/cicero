@@ -1,6 +1,8 @@
 import { getD1 } from '@/db';
-import { getAuth0Config, getAuth0User } from '@/lib/auth0-server';
 import { createEmptyProfile, normalizeProfile, type Profile } from '@/lib/profile';
+import { getRequestUser } from '@/lib/server/auth-user';
+import { errorResponse, json, readJson, unauthorized } from '@/lib/server/http';
+import { ensureSchema } from '@/lib/server/schema';
 
 type ProfileRow = {
   slow_pace: number;
@@ -14,7 +16,7 @@ type ProfileRow = {
   learned_shopping: string;
 };
 
-const CREATE_PROFILE_TABLE_SQL = `
+const SCHEMA = [`
   CREATE TABLE IF NOT EXISTS user_profiles (
     user_id TEXT PRIMARY KEY NOT NULL,
     slow_pace INTEGER NOT NULL DEFAULT 0,
@@ -29,24 +31,7 @@ const CREATE_PROFILE_TABLE_SQL = `
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )
-`;
-
-let schemaReady: Promise<void> | null = null;
-
-async function ensureProfileSchema() {
-  if (!schemaReady) {
-    const d1 = getD1();
-    schemaReady = d1.batch([
-      d1.prepare(CREATE_PROFILE_TABLE_SQL),
-      d1.prepare('PRAGMA optimize'),
-    ]).then(() => undefined).catch((error) => {
-      schemaReady = null;
-      throw error;
-    });
-  }
-
-  await schemaReady;
-}
+`];
 
 function parseStoredValues(value: string) {
   try {
@@ -72,27 +57,11 @@ function profileFromRow(row: ProfileRow): Profile {
   });
 }
 
-function unauthorized() {
-  return Response.json(
-    { error: 'AUTHENTICATION_REQUIRED' },
-    { status: 401, headers: { 'Cache-Control': 'no-store' } },
-  );
-}
-
-async function getProfileUser(request: Request) {
-  const auth0User = await getAuth0User(request);
-  if (auth0User) return { userId: `auth0:${auth0User.userId}` };
-
-  if (getAuth0Config()) return null;
-  const sitesUserId = request.headers.get('oai-authenticated-user-id')?.trim();
-  return sitesUserId ? { userId: `sites:${sitesUserId.slice(0, 249)}` } : null;
-}
-
 export async function GET(request: Request) {
-  const user = await getProfileUser(request);
+  const user = await getRequestUser(request);
   if (!user) return unauthorized();
 
-  await ensureProfileSchema();
+  await ensureSchema('user_profiles', SCHEMA);
   const row = await getD1()
     .prepare(`
       SELECT slow_pace, avoid_queues, no_fish, markets,
@@ -103,25 +72,18 @@ export async function GET(request: Request) {
     .bind(user.userId)
     .first<ProfileRow>();
 
-  return Response.json(
-    { profile: row ? profileFromRow(row) : createEmptyProfile(), exists: Boolean(row) },
-    { headers: { 'Cache-Control': 'no-store' } },
-  );
+  return json({ profile: row ? profileFromRow(row) : createEmptyProfile(), exists: Boolean(row) });
 }
 
 export async function PUT(request: Request) {
-  const user = await getProfileUser(request);
+  const user = await getRequestUser(request);
   if (!user) return unauthorized();
 
-  let payload: unknown;
-  try {
-    payload = await request.json();
-  } catch {
-    return Response.json({ error: 'INVALID_JSON' }, { status: 400 });
-  }
+  const payload = await readJson(request);
+  if (payload === null) return errorResponse('INVALID_JSON', 400);
 
   const profile = normalizeProfile(payload);
-  await ensureProfileSchema();
+  await ensureSchema('user_profiles', SCHEMA);
   await getD1()
     .prepare(`
       INSERT INTO user_profiles (
@@ -155,8 +117,5 @@ export async function PUT(request: Request) {
     )
     .run();
 
-  return Response.json(
-    { profile, saved: true },
-    { headers: { 'Cache-Control': 'no-store' } },
-  );
+  return json({ profile, saved: true });
 }
