@@ -96,6 +96,7 @@ export async function POST(request: Request) {
       return errorResponse('LLM_RATE_LIMITED', 503, 'Il modello è momentaneamente sovraccarico. Riprova tra poco.');
     }
     if (error instanceof Anthropic.APIError) {
+      console.error('chat agent upstream error', error.status, error.message);
       return errorResponse('LLM_UPSTREAM_ERROR', 502, `Il modello ha risposto con un errore (${error.status ?? 'sconosciuto'}).`);
     }
     console.error('chat agent failed', error);
