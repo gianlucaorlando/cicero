@@ -16,7 +16,8 @@ type StepResult = {
   failed: string[];
 };
 
-type ScenarioResult = { id: string; steps: StepResult[] };
+type SessionResult = { title: string; steps: StepResult[] };
+type ScenarioResult = { id: string; sessions: SessionResult[] };
 
 type Props = {
   ask: (text: string) => Promise<ChatResponse | null>;
@@ -29,6 +30,7 @@ type Props = {
 };
 
 const SETTLE_MS = 250;
+const SESSION_RESET_MS = 400;
 
 function settle(ms = SETTLE_MS) {
   return new Promise<void>((resolve) => { setTimeout(resolve, ms); });
@@ -48,8 +50,15 @@ function readDom(): StepSnapshot['dom'] {
 function emptyResults(selected: Scenario[]): ScenarioResult[] {
   return selected.map((scenario) => ({
     id: scenario.id,
-    steps: scenario.steps.map((step) => ({ say: step.say, status: 'pending', failed: [] })),
+    sessions: scenario.sessions.map((session) => ({
+      title: session.title,
+      steps: session.steps.map((step) => ({ say: step.say, status: 'pending', failed: [] })),
+    })),
   }));
+}
+
+function seconds(ms?: number) {
+  return ms == null ? '-' : `${(ms / 1000).toFixed(1)} s`;
 }
 
 function reportMarkdown(results: ScenarioResult[]) {
@@ -57,21 +66,31 @@ function reportMarkdown(results: ScenarioResult[]) {
   for (const result of results) {
     const scenario = scenarios.find((item) => item.id === result.id);
     lines.push(`## ${scenario?.title || result.id}`);
-    result.steps.forEach((step, index) => {
-      const mark = step.status === 'pass' ? '✅' : step.status === 'fail' || step.status === 'error' ? '❌' : '⏳';
-      lines.push(`${mark} Passo ${index + 1} (${step.durationMs ? `${(step.durationMs / 1000).toFixed(1)} s` : '-'}): "${step.say}"`);
-      if (step.reply) lines.push(`   Risposta: ${step.reply}`);
-      step.failed.forEach((label) => lines.push(`   ✗ ${label}`));
-    });
+    for (const session of result.sessions) {
+      if (result.sessions.length > 1) lines.push(`### ${session.title}`);
+      session.steps.forEach((step, index) => {
+        const mark = step.status === 'pass' ? '✅' : step.status === 'fail' || step.status === 'error' ? '❌' : '⏳';
+        lines.push(`${mark} Passo ${index + 1} (${seconds(step.durationMs)}): "${step.say}"`);
+        if (step.reply) lines.push(`   Risposta: ${step.reply}`);
+        step.failed.forEach((label) => lines.push(`   ✗ ${label}`));
+      });
+    }
     lines.push('');
   }
   return lines.join('\n');
 }
 
+function statusGlyph(status: StepResult['status']) {
+  if (status === 'pass') return '✓';
+  if (status === 'fail' || status === 'error') return '✗';
+  return status === 'running' ? '…' : '·';
+}
+
 /**
  * Hidden GUI test runner. Drives the real conversation hook so the map, the
  * cards and the profile update exactly as they would for a user, then checks
- * state and DOM after every turn.
+ * state and DOM after every turn. Sessions inside a scenario restart the chat
+ * but keep the profile, so memory across visits is tested too.
  */
 export function TestPanel({ ask, itinerary, candidates, profile, setProfile, reset, onClose }: Props) {
   const [selected, setSelected] = useState<string[]>(scenarios.map((scenario) => scenario.id));
@@ -85,10 +104,14 @@ export function TestPanel({ ask, itinerary, candidates, profile, setProfile, res
     latest.current = { ask, itinerary, candidates, profile };
   }, [ask, itinerary, candidates, profile]);
 
-  const updateStep = useCallback((scenarioIndex: number, stepIndex: number, patch: Partial<StepResult>) => {
-    setResults((current) => current.map((scenario, sIndex) => sIndex !== scenarioIndex
-      ? scenario
-      : { ...scenario, steps: scenario.steps.map((step, index) => (index === stepIndex ? { ...step, ...patch } : step)) }));
+  const updateStep = useCallback((scenarioIndex: number, sessionIndex: number, stepIndex: number, patch: Partial<StepResult>) => {
+    setResults((current) => current.map((scenario, sIndex) => (sIndex !== scenarioIndex ? scenario : {
+      ...scenario,
+      sessions: scenario.sessions.map((session, index) => (index !== sessionIndex ? session : {
+        ...session,
+        steps: session.steps.map((step, i) => (i === stepIndex ? { ...step, ...patch } : step)),
+      })),
+    })));
   }, []);
 
   async function runStep(step: Step, previous: StepSnapshot | null): Promise<{ snapshot: StepSnapshot; failed: string[] }> {
@@ -122,25 +145,29 @@ export function TestPanel({ ask, itinerary, candidates, profile, setProfile, res
     try {
       for (const [scenarioIndex, scenario] of chosen.entries()) {
         if (cancelled.current) break;
-        reset();
         setProfile(createEmptyProfile());
-        await settle(400);
 
-        let previous: StepSnapshot | null = null;
-        for (const [stepIndex, step] of scenario.steps.entries()) {
+        for (const [sessionIndex, session] of scenario.sessions.entries()) {
           if (cancelled.current) break;
-          updateStep(scenarioIndex, stepIndex, { status: 'running' });
-          try {
-            const { snapshot, failed } = await runStep(step, previous);
-            previous = snapshot;
-            updateStep(scenarioIndex, stepIndex, {
-              status: failed.length ? 'fail' : 'pass',
-              durationMs: snapshot.durationMs,
-              reply: snapshot.reply,
-              failed,
-            });
-          } catch (error) {
-            updateStep(scenarioIndex, stepIndex, { status: 'error', failed: [error instanceof Error ? error.message : 'Errore imprevisto'] });
+          reset();
+          await settle(SESSION_RESET_MS);
+
+          let previous: StepSnapshot | null = null;
+          for (const [stepIndex, step] of session.steps.entries()) {
+            if (cancelled.current) break;
+            updateStep(scenarioIndex, sessionIndex, stepIndex, { status: 'running' });
+            try {
+              const { snapshot, failed } = await runStep(step, previous);
+              previous = snapshot;
+              updateStep(scenarioIndex, sessionIndex, stepIndex, {
+                status: failed.length ? 'fail' : 'pass',
+                durationMs: snapshot.durationMs,
+                reply: snapshot.reply,
+                failed,
+              });
+            } catch (error) {
+              updateStep(scenarioIndex, sessionIndex, stepIndex, { status: 'error', failed: [error instanceof Error ? error.message : 'Errore imprevisto'] });
+            }
           }
         }
       }
@@ -158,10 +185,11 @@ export function TestPanel({ ask, itinerary, candidates, profile, setProfile, res
     } catch { /* clipboard unavailable: the report stays visible in the panel */ }
   }
 
-  const totals = results.flatMap((result) => result.steps).reduce(
-    (sum, step) => ({ pass: sum.pass + (step.status === 'pass' ? 1 : 0), fail: sum.fail + (step.status === 'fail' || step.status === 'error' ? 1 : 0) }),
-    { pass: 0, fail: 0 },
-  );
+  const allSteps = results.flatMap((result) => result.sessions.flatMap((session) => session.steps));
+  const totals = {
+    pass: allSteps.filter((step) => step.status === 'pass').length,
+    fail: allSteps.filter((step) => step.status === 'fail' || step.status === 'error').length,
+  };
 
   return (
     <aside className="test-panel" aria-label="Pannello test GUI">
@@ -176,6 +204,12 @@ export function TestPanel({ ask, itinerary, candidates, profile, setProfile, res
           {running ? <><LocateFixed className="spin" /> In esecuzione…</> : 'Esegui'}
         </Button>
         {running && <Button type="button" size="sm" variant="outline" onClick={() => { cancelled.current = true; }}>Interrompi</Button>}
+        {!running && (
+          <>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setSelected(scenarios.map((scenario) => scenario.id))}>Tutti</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setSelected([])}>Nessuno</Button>
+          </>
+        )}
         {!running && results.length > 0 && (
           <Button type="button" size="sm" variant="outline" onClick={() => void copyReport()}>
             {copied ? <><Check /> Copiato</> : <><Copy /> Copia report</>}
@@ -187,6 +221,7 @@ export function TestPanel({ ask, itinerary, candidates, profile, setProfile, res
         {scenarios.map((scenario) => {
           const result = results.find((item) => item.id === scenario.id);
           const checked = selected.includes(scenario.id);
+          const stepCount = scenario.sessions.reduce((sum, session) => sum + session.steps.length, 0);
           return (
             <li key={scenario.id}>
               <label className="test-scenario-head" aria-label={`Includi lo scenario ${scenario.title}`}>
@@ -196,30 +231,35 @@ export function TestPanel({ ask, itinerary, candidates, profile, setProfile, res
                   disabled={running}
                   onChange={() => setSelected((current) => (checked ? current.filter((id) => id !== scenario.id) : [...current, scenario.id]))}
                 />
-                <span><strong>{scenario.title}</strong><small>{scenario.description}</small></span>
+                <span>
+                  <strong>{scenario.title}</strong>
+                  <small>{scenario.description}</small>
+                  <small>{scenario.sessions.length > 1 ? `${scenario.sessions.length} sessioni · ` : ''}{stepCount} passi</small>
+                </span>
               </label>
-              {result && (
-                <ol className="test-steps">
-                  {result.steps.map((step, index) => (
-                    <li key={index} className={`test-step ${step.status}`}>
-                      <span className="test-step-status" aria-label={step.status}>
-                        {step.status === 'pass' ? '✓' : step.status === 'fail' || step.status === 'error' ? '✗' : step.status === 'running' ? '…' : '·'}
-                      </span>
-                      <div>
-                        <span>“{step.say}”</span>
-                        {step.durationMs != null && <small>{(step.durationMs / 1000).toFixed(1)} s</small>}
-                        {step.reply && <em>{step.reply}</em>}
-                        {step.failed.map((label) => <b key={label}>✗ {label}</b>)}
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              )}
+              {result && result.sessions.map((session, sessionIndex) => (
+                <div className="test-session" key={sessionIndex}>
+                  {result.sessions.length > 1 && <h4>{session.title}</h4>}
+                  <ol className="test-steps">
+                    {session.steps.map((step, index) => (
+                      <li key={index} className={`test-step ${step.status}`}>
+                        <span className="test-step-status" aria-label={step.status}>{statusGlyph(step.status)}</span>
+                        <div>
+                          <span>“{step.say}”</span>
+                          {step.durationMs != null && <small>{seconds(step.durationMs)}</small>}
+                          {step.reply && <em>{step.reply}</em>}
+                          {step.failed.map((label) => <b key={label}>✗ {label}</b>)}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              ))}
             </li>
           );
         })}
       </ol>
-      <p className="test-panel-note">Ogni scenario parte da chat e profilo vuoti; il profilo viene ripristinato alla fine. Le chiamate al modello e a Google Places sono reali.</p>
+      <p className="test-panel-note">Ogni scenario parte da chat e profilo vuoti; tra le sessioni di uno scenario la chat ricomincia ma il profilo resta. Il tuo profilo viene ripristinato alla fine. Le chiamate al modello e a Google Places sono reali.</p>
     </aside>
   );
 }

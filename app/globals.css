@@ -1169,3 +1169,12 @@ h1 {
 .test-step.fail .test-step-status, .test-step.error .test-step-status { background: #f6d9d3; color: #9b2c1c; }
 .test-step.running .test-step-status { background: var(--accent); color: var(--accent-foreground); }
 .test-panel-note { margin: 0; padding: 8px 14px 12px; color: var(--muted-foreground); border-top: 1px solid var(--border); }
+.test-session { margin-top: 8px; }
+.test-session h4 {
+  margin: 0 0 4px 24px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
