@@ -3,8 +3,8 @@
 import { useCallback, useRef, useState } from 'react';
 
 import { api, ApiError } from '@/lib/api';
-import { shiftTime } from '@/lib/format';
-import type { ChatAction, ChatContext, ChatMessage, ChatRole, PlaceCandidate, ProfilePatch, Stop } from '@/lib/types';
+import { applyActions } from '@/lib/conversation-state';
+import type { ChatContext, ChatMessage, ChatResponse, ChatRole, PlaceCandidate, ProfilePatch, Stop } from '@/lib/types';
 
 export type ChatMode = 'unknown' | 'ready' | 'missing' | 'error';
 
@@ -18,23 +18,6 @@ const initialMessages: ChatMessage[] = [
     meta: 'Userò solo luoghi verificati',
   },
 ];
-
-function applyActionsToItinerary(current: Stop[], actions: ChatAction[]) {
-  return actions.reduce((stops, action) => {
-    switch (action.type) {
-      case 'add_stops': {
-        const known = new Set(stops.map((stop) => stop.placeId || stop.id));
-        return [...stops, ...action.stops.filter((stop) => !known.has(stop.placeId || stop.id))];
-      }
-      case 'remove_stops':
-        return stops.filter((stop) => !action.stopIds.includes(stop.id));
-      case 'shift_times':
-        return stops.map((stop) => ({ ...stop, time: shiftTime(stop.time, action.minutes) }));
-      default:
-        return stops;
-    }
-  }, current);
-}
 
 /**
  * Owns the chat transcript, the itinerary and the candidate pins. Every user
@@ -55,9 +38,10 @@ export function useConversation(onProfilePatch: (patch: ProfilePatch) => void) {
 
   const notify = useCallback((text: string, meta?: string) => append('assistant', text, meta), [append]);
 
-  const send = useCallback(async (text: string, context: TurnContext) => {
+  /** Sends one user turn. Resolves with the agent response, or null when the turn was rejected or failed. */
+  const send = useCallback(async (text: string, context: TurnContext): Promise<ChatResponse | null> => {
     const value = text.trim();
-    if (!value || thinking) return;
+    if (!value || thinking) return null;
     append('user', value);
     setThinking(true);
 
@@ -69,14 +53,14 @@ export function useConversation(onProfilePatch: (patch: ProfilePatch) => void) {
 
       setMode('ready');
       const actions = response.actions || [];
-      setItinerary((current) => applyActionsToItinerary(current, actions));
-      const lastSearch = [...actions].reverse().find((action) => action.type === 'show_candidates');
-      if (lastSearch && lastSearch.type === 'show_candidates') setCandidates(lastSearch.candidates);
-      if (actions.some((action) => action.type === 'add_stops') && !lastSearch) setCandidates([]);
+      const next = applyActions({ itinerary, candidates }, actions);
+      setItinerary(next.itinerary);
+      setCandidates(next.candidates);
       for (const action of actions) {
         if (action.type === 'update_profile') onProfilePatch(action.patch);
       }
       append('assistant', response.reply, response.meta);
+      return response;
     } catch (error) {
       if (error instanceof ApiError && error.code === 'LLM_NOT_CONFIGURED') {
         setMode('missing');
@@ -87,6 +71,7 @@ export function useConversation(onProfilePatch: (patch: ProfilePatch) => void) {
         setMode('error');
         append('assistant', 'Non riesco a raggiungere il modello in questo momento. Il tuo itinerario resta invariato.', 'Errore di connessione');
       }
+      return null;
     } finally {
       setThinking(false);
     }
@@ -101,6 +86,14 @@ export function useConversation(onProfilePatch: (patch: ProfilePatch) => void) {
     setCandidates([]);
   }, []);
 
+  /** Back to the opening state: used by the hidden test panel between scenarios. */
+  const reset = useCallback(() => {
+    setMessages(initialMessages);
+    setItinerary([]);
+    setCandidates([]);
+    nextId.current = initialMessages.length + 1;
+  }, []);
+
   return {
     messages,
     itinerary,
@@ -113,5 +106,6 @@ export function useConversation(onProfilePatch: (patch: ProfilePatch) => void) {
     send,
     removeStop,
     replaceItinerary,
+    reset,
   };
 }

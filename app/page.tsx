@@ -8,6 +8,7 @@ import { MapStage } from '@/components/cicero/map-stage';
 import { ProfileSheet, type ManualPreferenceKey } from '@/components/cicero/profile-sheet';
 import { RouteDetailSheet } from '@/components/cicero/route-detail-sheet';
 import { SavedRoutesSheet } from '@/components/cicero/saved-routes-sheet';
+import { TestPanel } from '@/components/cicero/test-panel';
 import { useAuth0 } from '@/hooks/use-auth0';
 import { useConversation, type ChatMode } from '@/hooks/use-conversation';
 import { useLocation } from '@/hooks/use-location';
@@ -50,6 +51,7 @@ export default function Home() {
   const [locationOpen, setLocationOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(true);
   const [routeFocusToken, setRouteFocusToken] = useState(0);
+  const [testPanelOpen, setTestPanelOpen] = useState(false);
 
   const speech = useSpeechInput(useCallback((transcript: string) => setInput(transcript), []));
 
@@ -57,6 +59,14 @@ export default function Home() {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => undefined);
     }
+  }, []);
+
+  // Hidden GUI test runner: opt in with ?test=1, and only where the server allows it.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('test') !== '1') return;
+    fetch('/api/test-panel', { cache: 'no-store' })
+      .then((response) => { if (response.status === 204) setTestPanelOpen(true); })
+      .catch(() => undefined);
   }, []);
 
   const { profile } = profileSync;
@@ -252,6 +262,18 @@ export default function Home() {
         locating={location.locating}
         onUseCurrentLocation={location.useCurrentLocation}
       />
+
+      {testPanelOpen && (
+        <TestPanel
+          ask={ask}
+          itinerary={itinerary}
+          candidates={candidates}
+          profile={profile}
+          setProfile={profileSync.setProfile}
+          reset={conversation.reset}
+          onClose={() => setTestPanelOpen(false)}
+        />
+      )}
     </main>
   );
 }

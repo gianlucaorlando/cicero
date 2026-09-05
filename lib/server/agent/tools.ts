@@ -182,7 +182,7 @@ function failure(error: unknown): ToolOutcome {
  * records the actions the client must apply.
  */
 export class AgentSession {
-  readonly actions: ChatAction[] = [];
+  actions: ChatAction[] = [];
   private itinerary: Stop[];
   private candidates: PlaceCandidate[];
 
@@ -303,6 +303,8 @@ export class AgentSession {
 
     if (added.length) {
       this.candidates = [];
+      // Candidates shown earlier in this turn are consumed by the choice; do not resurface them.
+      this.actions = this.actions.filter((action) => action.type !== 'show_candidates');
       this.actions.push({ type: 'add_stops', stops: added });
     }
     return { content: notes.join('\n'), isError: !added.length };
