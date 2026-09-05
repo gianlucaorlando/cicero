@@ -10,7 +10,11 @@ import { clientKey, rateLimit } from '@/lib/server/rate-limit';
 import { normalizeStops } from '@/lib/server/stops';
 import type { ChatRequest, PlaceCandidate } from '@/lib/types';
 
-const RATE_LIMIT = { requests: 30, windowMs: 10 * 60 * 1000 };
+const RATE_LIMIT = {
+  requests: Math.max(1, Number(process.env.CICERO_RATE_LIMIT) || 60),
+  windowMs: 10 * 60 * 1000,
+  enabled: process.env.NODE_ENV === 'production' || process.env.CICERO_RATE_LIMIT !== undefined,
+};
 const MAX_MESSAGES = 40;
 const MAX_MESSAGE_LENGTH = 2000;
 
@@ -75,7 +79,9 @@ export async function POST(request: Request) {
   }
 
   const user = await getRequestUser(request);
-  const limit = rateLimit(clientKey(request, user?.userId), RATE_LIMIT.requests, RATE_LIMIT.windowMs);
+  const limit = RATE_LIMIT.enabled
+    ? rateLimit(clientKey(request, user?.userId), RATE_LIMIT.requests, RATE_LIMIT.windowMs)
+    : { allowed: true, retryAfterSeconds: 0 };
   if (!limit.allowed) {
     return Response.json(
       { error: 'RATE_LIMITED', message: 'Troppe richieste in poco tempo. Riprova tra qualche minuto.' },

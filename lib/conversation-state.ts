@@ -23,6 +23,8 @@ export function applyActions(state: PlanState, actions: ChatAction[]): PlanState
         return { ...current, itinerary: current.itinerary.filter((stop) => !action.stopIds.includes(stop.id)) };
       case 'shift_times':
         return { ...current, itinerary: current.itinerary.map((stop) => ({ ...stop, time: shiftTime(stop.time, action.minutes) })) };
+      case 'set_itinerary':
+        return { ...current, itinerary: action.stops };
       default:
         return current;
     }

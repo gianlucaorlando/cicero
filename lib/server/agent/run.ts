@@ -5,7 +5,7 @@ import { AGENT_TOOLS, AgentSession } from '@/lib/server/agent/tools';
 import type { ChatAction, ChatRequest, ChatResponse } from '@/lib/types';
 
 const DEFAULT_MODEL = 'claude-opus-5';
-const MAX_ITERATIONS = 6;
+const MAX_ITERATIONS = 8;
 const MAX_HISTORY = 24;
 const MAX_OUTPUT_TOKENS = 2048;
 
@@ -33,7 +33,7 @@ function historyToMessages(history: ChatRequest['messages']): Anthropic.Beta.Bet
 function metaFor(actions: ChatAction[]) {
   if (actions.some((action) => action.type === 'add_stops')) return 'Tappe verificate su Google Places';
   if (actions.some((action) => action.type === 'show_candidates')) return 'Ricerca Google Places completata';
-  if (actions.some((action) => action.type === 'remove_stops' || action.type === 'shift_times')) return 'Itinerario aggiornato, non rigenerato';
+  if (actions.some((action) => action.type === 'remove_stops' || action.type === 'shift_times' || action.type === 'set_itinerary')) return 'Itinerario aggiornato, non rigenerato';
   if (actions.some((action) => action.type === 'update_profile')) return 'Profilo aggiornato dalla conversazione';
   return undefined;
 }

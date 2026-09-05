@@ -144,6 +144,16 @@ const noStopMatching = (pattern: RegExp, label: string): Check => ({
   pass: (s) => !s.itinerary.some((stop) => pattern.test(`${stop.title} ${stop.primaryType || ''}`)),
 });
 
+const firstStopMatches = (pattern: RegExp, label: string): Check => ({
+  label: `La prima tappa è ${label}`,
+  pass: (s) => pattern.test(s.itinerary[0]?.title || ''),
+});
+
+const timesAscending: Check = {
+  label: 'Gli orari seguono il nuovo ordine',
+  pass: (s) => s.itinerary.every((stop, index) => index === 0 || stop.time >= s.itinerary[index - 1].time),
+};
+
 const timesShiftedBy = (minutes: number): Check => ({
   label: `Orari spostati di ${minutes} minuti`,
   pass: (s, previous) => {
@@ -219,12 +229,20 @@ export const scenarios: Scenario[] = [
         checks: [replied, within(60_000), stopsEqual(1), guiMatchesState],
       },
       {
+        say: 'Aggiungi anche il Castello Sforzesco.',
+        checks: [replied, within(60_000), stopsEqual(2), stopsUnchanged, guiMatchesState],
+      },
+      {
+        say: 'Metti il Castello prima del Duomo.',
+        checks: [replied, within(45_000), stopsEqual(2), firstStopMatches(/castello/i, 'il Castello'), timesAscending, guiMatchesState],
+      },
+      {
         say: 'Sposta tutto avanti di un’ora.',
-        checks: [replied, within(45_000), stopsEqual(1), timesShiftedBy(60)],
+        checks: [replied, within(45_000), stopsEqual(2), timesShiftedBy(60)],
       },
       {
         say: 'Togli l’ultima tappa.',
-        checks: [replied, within(45_000), stopsEqual(0), guiMatchesState],
+        checks: [replied, within(45_000), stopsEqual(1), firstStopMatches(/castello/i, 'il Castello'), guiMatchesState],
       },
     ]),
   },

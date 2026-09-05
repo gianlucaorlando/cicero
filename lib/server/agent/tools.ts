@@ -64,6 +64,18 @@ export const AGENT_TOOLS: Anthropic.Beta.BetaTool[] = [
     },
   },
   {
+    name: 'reorder_stops',
+    description: 'Riordina le tappe esistenti. Gli orari vengono riassegnati nel nuovo ordine e le distanze ricalcolate; nessuna tappa viene aggiunta o rimossa.',
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        stop_ids: { type: 'array', minItems: 2, items: { type: 'string' }, description: 'Id delle tappe nel nuovo ordine di visita. Le tappe non elencate restano in coda nell\'ordine attuale.' },
+      },
+      required: ['stop_ids'],
+    },
+  },
+  {
     name: 'shift_times',
     description: 'Sposta gli orari di tutte le tappe avanti o indietro, mantenendo ordine e distanze.',
     input_schema: {
@@ -198,6 +210,7 @@ export class AgentSession {
       case 'add_stops': return this.addStops(input);
       case 'get_place_details': return this.placeDetails(input);
       case 'remove_stops': return this.removeStops(input);
+      case 'reorder_stops': return this.reorderStops(input);
       case 'shift_times': return this.shiftTimes(input);
       case 'update_profile': return this.updateProfile(input);
       default: return { isError: true, content: `Strumento sconosciuto: ${name}` };
@@ -215,7 +228,7 @@ export class AgentSession {
   }
 
   private resolvePlaceId(reference: string) {
-    const trimmed = reference.trim();
+    const trimmed = reference.trim().replace(/^(?:opzione|option)\s+/i, '').replace(/[.)\s]+$/, '');
     if (/^[A-Za-z]$/.test(trimmed)) {
       const candidate = this.candidates[trimmed.toUpperCase().charCodeAt(0) - 65];
       return candidate?.id || null;
@@ -327,6 +340,31 @@ export class AgentSession {
     this.itinerary = this.itinerary.filter((stop) => !ids.includes(stop.id));
     this.actions.push({ type: 'remove_stops', stopIds: removed.map((stop) => stop.id) });
     return { content: `Rimosse: ${removed.map((stop) => stop.title).join(', ')}. Restano ${this.itinerary.length} tappe.` };
+  }
+
+  private reorderStops(input: Record<string, unknown>): ToolOutcome {
+    const ids = stringList(input.stop_ids, MAX_STOPS);
+    const known = new Set(this.itinerary.map((stop) => stop.id));
+    const requested = ids.filter((id, index) => known.has(id) && ids.indexOf(id) === index);
+    if (requested.length < 2) return { isError: true, content: 'Servono almeno due id di tappe esistenti per riordinare.' };
+
+    const byId = new Map(this.itinerary.map((stop) => [stop.id, stop]));
+    const ordered = [
+      ...requested.map((id) => byId.get(id)!),
+      ...this.itinerary.filter((stop) => !requested.includes(stop.id)),
+    ];
+    const times = this.itinerary.map((stop) => stop.time).sort();
+    let previous: LatLng = this.context.origin;
+    this.itinerary = ordered.map((stop, index) => {
+      // The first detail segment is the leg distance from the previous stop: recompute it for the new order.
+      const segments = stop.detail.split(' · ');
+      const hadDistance = /^\d+ m$|^\d+,\d km$/.test(segments[0] || '');
+      const detail = [humanDistance(distanceMeters(previous, stop)), ...(hadDistance ? segments.slice(1) : segments)].filter(Boolean).join(' · ');
+      previous = stop;
+      return { ...stop, time: times[index] || stop.time, detail };
+    });
+    this.actions.push({ type: 'set_itinerary', stops: this.itinerary });
+    return { content: `Nuovo ordine: ${this.itinerary.map((stop, index) => `${index + 1}. ${stop.time} ${stop.title}`).join('; ')}` };
   }
 
   private shiftTimes(input: Record<string, unknown>): ToolOutcome {

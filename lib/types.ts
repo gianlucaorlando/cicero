@@ -114,6 +114,7 @@ export type ChatAction =
   | { type: 'add_stops'; stops: Stop[] }
   | { type: 'remove_stops'; stopIds: string[] }
   | { type: 'shift_times'; minutes: number }
+  | { type: 'set_itinerary'; stops: Stop[] }
   | { type: 'update_profile'; patch: ProfilePatch };
 
 export type ChatResponse = {
