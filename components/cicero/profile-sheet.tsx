@@ -23,8 +23,6 @@ export type ManualPreferenceKey = 'avoidQueues' | 'markets' | 'noFish' | 'slowPa
 const manualPreferences: Array<{ key: ManualPreferenceKey; label: string; detail: string }> = [
   { key: 'slowPace', label: 'Ritmo tranquillo', detail: 'Meno tappe, più margine' },
   { key: 'avoidQueues', label: 'Evita le code', detail: 'Orari alternativi quando possibile' },
-  { key: 'noFish', label: 'Niente pesce', detail: 'Escluso dalle ricerche di ristoranti' },
-  { key: 'markets', label: 'Mercati locali', detail: 'Priorità quando fai shopping' },
 ];
 
 type Props = {

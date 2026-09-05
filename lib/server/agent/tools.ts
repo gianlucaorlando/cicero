@@ -164,6 +164,7 @@ function stopTime(localTime: string, index: number) {
 }
 
 function failure(error: unknown): ToolOutcome {
+  console.error('places tool failed', error instanceof Error ? `${error.name}: ${error.message}` : error);
   if (error instanceof PlacesError) {
     return {
       isError: true,
