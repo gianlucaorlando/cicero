@@ -32,6 +32,7 @@ type Props = {
   onOpenSavedRoutes: () => void;
   profileInitials: string;
   onOpenProfile: () => void;
+  onMapReady: () => void;
 };
 
 export function MapStage({
@@ -56,6 +57,7 @@ export function MapStage({
   onOpenSavedRoutes,
   profileInitials,
   onOpenProfile,
+  onMapReady,
 }: Props) {
   return (
     <section className={`map-stage ${stops.length ? 'has-route' : ''} ${candidates.length ? 'has-candidates' : ''}`} aria-label="Mappa dell’itinerario">
@@ -69,6 +71,7 @@ export function MapStage({
           if (candidate && !selectionDisabled) onSelectCandidate(candidate);
         }}
         focusToken={focusToken}
+        onReady={onMapReady}
       />
       <div className="map-wash" aria-hidden="true" />
 

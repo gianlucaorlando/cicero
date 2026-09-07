@@ -41,6 +41,7 @@ export function MapPicker({
   candidates,
   onSelectCandidate,
   focusToken,
+  onReady,
 }: {
   coords: Coordinates;
   onChange: (coords: Coordinates) => void;
@@ -48,6 +49,7 @@ export function MapPicker({
   candidates: MapCandidate[];
   onSelectCandidate: (candidateId: string) => void;
   focusToken: number;
+  onReady?: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
@@ -57,6 +59,7 @@ export function MapPicker({
   const candidateMarkersRef = useRef<Marker[]>([]);
   const onChangeRef = useRef(onChange);
   const onSelectCandidateRef = useRef(onSelectCandidate);
+  const onReadyRef = useRef(onReady);
   const coordsRef = useRef(coords);
   const stopsRef = useRef(stops);
   const candidatesRef = useRef(candidates);
@@ -145,6 +148,10 @@ export function MapPicker({
   useEffect(() => {
     onSelectCandidateRef.current = onSelectCandidate;
   }, [onSelectCandidate]);
+
+  useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
 
   useEffect(() => {
     coordsRef.current = coords;
@@ -255,6 +262,13 @@ export function MapPicker({
       markerRef.current = marker;
       updateItineraryOverlay(candidatesRef.current.length ? 'candidates' : 'route');
       map.once('style.load', () => updateItineraryOverlay(candidatesRef.current.length ? 'candidates' : 'route'));
+      // The first drawn frame is enough to lift the splash; tiles keep filling in behind it.
+      const ready = () => {
+        onReadyRef.current?.();
+        onReadyRef.current = undefined;
+      };
+      map.once('render', ready);
+      map.once('error', ready);
 
       let resizeTimer: number | undefined;
       const resizeObserver = new ResizeObserver(() => {

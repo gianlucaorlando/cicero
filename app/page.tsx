@@ -29,6 +29,13 @@ const quickPrompts: QuickPrompt[] = [
   { label: 'Qualcosa al coperto', text: 'Piove: proponimi qualcosa al coperto.' },
 ];
 
+function hideSplash() {
+  const splash = document.getElementById('app-splash');
+  if (!splash || splash.classList.contains('is-hidden')) return;
+  splash.classList.add('is-hidden');
+  window.setTimeout(() => splash.remove(), 400);
+}
+
 const footerNotes: Record<ChatMode, string> = {
   unknown: 'Claude + Google Places · nessun luogo inventato',
   ready: 'Claude + Google Places · nessun luogo inventato',
@@ -59,6 +66,12 @@ export default function Home() {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => undefined);
     }
+  }, []);
+
+  // Splash screen (rendered by the layout): dismissed when the map is ready, or after a safety timeout.
+  useEffect(() => {
+    const timeout = window.setTimeout(hideSplash, 4000);
+    return () => window.clearTimeout(timeout);
   }, []);
 
   // Hidden GUI test runner: opt in with ?test=1, and only where the server allows it.
@@ -187,6 +200,7 @@ export default function Home() {
         onOpenSavedRoutes={openSavedRoutes}
         profileInitials={initials}
         onOpenProfile={() => setProfileOpen(true)}
+        onMapReady={hideSplash}
       />
 
       <ConversationPanel
