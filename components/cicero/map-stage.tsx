@@ -118,7 +118,9 @@ export function MapStage({
       {candidates.length > 0 ? (
         <div className="candidate-map-summary">
           <MapPin />
-          <div><strong>{candidates.length} proposte sulla mappa</strong><span>Tocca un pin oppure scegli dall’elenco</span></div>
+          {candidates.length === 1
+            ? <div><strong>La proposta è sulla mappa</strong><span>Tocca il pin per aggiungerla</span></div>
+            : <div><strong>{candidates.length} proposte sulla mappa</strong><span>Tocca un pin oppure scegli dall’elenco</span></div>}
         </div>
       ) : stops.length > 0 && (
         <button className="route-summary" type="button" onClick={onOpenRoute} aria-label="Apri il riepilogo del percorso">

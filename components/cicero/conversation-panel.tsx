@@ -37,6 +37,17 @@ type Props = {
   footerNote: string;
 };
 
+const normalize = (value: string) => value.toLocaleLowerCase('it').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]+/g, '').trim();
+
+/** With a proposal on screen its card already offers "sì" and "un'altra": drop chips that would repeat them. */
+function visibleSuggestions(suggestions: string[], proposal: Proposal | null) {
+  if (!proposal) return suggestions;
+  return suggestions.filter((suggestion) => {
+    const text = normalize(suggestion);
+    return !/^(si|ok|va bene|perfetto)\b/.test(text) && !/^(no )?(un ?altra|un ?altro|unaltra|unaltro)\b/.test(text);
+  });
+}
+
 export function ConversationPanel({
   mapOpen,
   onToggleMap,
@@ -125,9 +136,9 @@ export function ConversationPanel({
         <div ref={messagesEnd} />
       </div>
 
-      {suggestions.length > 0 && !thinking && (
+      {visibleSuggestions(suggestions, proposal).length > 0 && !thinking && (
         <div className="quick-prompts" aria-label="Risposte rapide">
-          {suggestions.map((suggestion) => (
+          {visibleSuggestions(suggestions, proposal).map((suggestion) => (
             <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>
           ))}
         </div>

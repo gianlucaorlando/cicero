@@ -60,7 +60,8 @@ const within = (ms: number): Check => ({
 /** Every turn must end with tappable quick replies, the core of the "propose, then confirm" dialogue. */
 const offersReplies: Check = {
   label: 'Il turno si chiude con 2–4 risposte rapide toccabili',
-  pass: (s) => s.suggestions.length >= 2 && s.suggestions.length <= 4 && s.dom.suggestionChips === s.suggestions.length,
+  // Under a proposal the chips that duplicate the card buttons are hidden, so fewer chips than suggestions is fine.
+  pass: (s) => s.suggestions.length >= 2 && s.suggestions.length <= 4 && s.dom.suggestionChips >= 1 && s.dom.suggestionChips <= s.suggestions.length,
 };
 
 const proposalShown: Check = {

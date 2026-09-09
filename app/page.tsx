@@ -111,6 +111,10 @@ export default function Home() {
   }
 
   function selectCandidate(candidate: PlaceCandidate) {
+    if (proposal && candidate.id === proposal.candidate.id) {
+      void ask('Sì, aggiungila.');
+      return;
+    }
     const index = candidates.findIndex((item) => item.id === candidate.id);
     const letter = index >= 0 ? ` (${candidateLetter(index)})` : '';
     void ask(proposal ? `Preferisco ${candidate.name}${letter}: aggiungi quella.` : `Aggiungi ${candidate.name}${letter}.`);
