@@ -68,6 +68,7 @@ function normalizeRequest(payload: unknown): ChatRequest | null {
       candidates: Array.isArray(context.candidates)
         ? context.candidates.slice(0, 10).map(normalizeCandidate).filter((candidate): candidate is PlaceCandidate => candidate !== null)
         : [],
+      proposing: context.proposing === true,
       profile: normalizeProfile(context.profile),
     },
   };

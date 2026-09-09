@@ -13,7 +13,7 @@ const MINUTES_PER_STOP = 45;
 export const AGENT_TOOLS: Anthropic.Beta.BetaTool[] = [
   {
     name: 'search_places',
-    description: 'Cerca luoghi reali su Google Places vicino a un punto. Le opzioni trovate vengono mostrate all\'utente con lettere A, B, C... Sostituisce le opzioni mostrate in precedenza.',
+    description: 'Cerca luoghi reali su Google Places vicino a un punto. I risultati (lettere A, B, C...) restano disponibili per propose_stop, add_stops e show_options; non vengono mostrati all\'utente finché non li proponi o li mostri.',
     input_schema: {
       type: 'object',
       additionalProperties: false,
@@ -25,6 +25,41 @@ export const AGENT_TOOLS: Anthropic.Beta.BetaTool[] = [
         radius_meters: { type: 'integer', minimum: 100, maximum: 5000, description: 'Raggio di ricerca. Default 1200.' },
       },
       required: ['query', 'near', 'open_now'],
+    },
+  },
+  {
+    name: 'propose_stop',
+    description: 'Propone all\'utente un solo luogo tra i risultati trovati, con una motivazione breve. L\'interfaccia mostra la scheda con i pulsanti "Sì" e "Un\'altra"; le altre opzioni restano disponibili se l\'utente le chiede.',
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        place: { type: 'string', description: 'Place ID oppure lettera del risultato da proporre.' },
+        reason: { type: 'string', description: 'Una frase: perché questo luogo, per questo utente, adesso (vicinanza, orario, preferenze, meteo).' },
+      },
+      required: ['place', 'reason'],
+    },
+  },
+  {
+    name: 'dismiss_proposal',
+    description: 'Ritira la proposta in sospeso e nasconde i risultati, quando l\'utente chiude la conversazione o rifiuta senza volere alternative.',
+    input_schema: { type: 'object', additionalProperties: false, properties: {}, required: [] },
+  },
+  {
+    name: 'show_options',
+    description: 'Mostra all\'utente la lista completa dei risultati dell\'ultima ricerca, con lettere. Solo se lo chiede esplicitamente.',
+    input_schema: { type: 'object', additionalProperties: false, properties: {}, required: [] },
+  },
+  {
+    name: 'suggest_replies',
+    description: 'Chiude il turno con le risposte rapide che l\'utente potrà toccare. Da chiamare sempre come ultimo strumento del turno.',
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        replies: { type: 'array', minItems: 2, maxItems: 4, items: { type: 'string', maxLength: 40 }, description: 'Risposte brevi in prima persona, la prima affermativa. Es. ["Sì, aggiungila", "Un\'altra", "Preferisco un museo"].' },
+      },
+      required: ['replies'],
     },
   },
   {
@@ -207,6 +242,10 @@ export class AgentSession {
     const input = asRecord(rawInput);
     switch (name) {
       case 'search_places': return this.searchPlaces(input);
+      case 'propose_stop': return this.proposeStop(input);
+      case 'show_options': return this.showOptions();
+      case 'dismiss_proposal': return this.dismissProposal();
+      case 'suggest_replies': return this.suggestReplies(input);
       case 'add_stops': return this.addStops(input);
       case 'get_place_details': return this.placeDetails(input);
       case 'remove_stops': return this.removeStops(input);
@@ -251,12 +290,12 @@ export class AgentSession {
       });
       const fresh = candidates.filter((candidate) => !this.itinerary.some((stop) => stop.placeId === candidate.id));
       this.candidates = fresh;
-      this.actions.push({ type: 'show_candidates', candidates: fresh });
+      this.actions = this.actions.filter((action) => action.type !== 'show_candidates' && action.type !== 'propose');
 
       if (!fresh.length) {
         return { content: input.open_now === false ? 'Nessun luogo adatto trovato nel raggio indicato.' : 'Nessun luogo aperto adesso trovato nel raggio indicato. Puoi riprovare con open_now false o un raggio più ampio.' };
       }
-      return { content: `Opzioni mostrate all'utente:\n${fresh.map(describeCandidate).join('\n')}` };
+      return { content: `Risultati (non ancora mostrati all'utente; usa propose_stop per proporne uno):\n${fresh.map(describeCandidate).join('\n')}` };
     } catch (error) {
       return failure(error);
     }
@@ -316,11 +355,48 @@ export class AgentSession {
 
     if (added.length) {
       this.candidates = [];
-      // Candidates shown earlier in this turn are consumed by the choice; do not resurface them.
-      this.actions = this.actions.filter((action) => action.type !== 'show_candidates');
+      // Whatever was proposed or listed earlier in this turn is consumed by the choice.
+      this.actions = this.actions.filter((action) => action.type !== 'show_candidates' && action.type !== 'propose');
       this.actions.push({ type: 'add_stops', stops: added });
     }
     return { content: notes.join('\n'), isError: !added.length };
+  }
+
+  private proposeStop(input: Record<string, unknown>): ToolOutcome {
+    const placeId = typeof input.place === 'string' ? this.resolvePlaceId(input.place) : null;
+    const candidate = this.candidates.find((item) => item.id === placeId);
+    if (!candidate) return { isError: true, content: 'Il luogo da proporre deve essere tra i risultati dell\'ultima ricerca.' };
+    if (this.itinerary.some((stop) => stop.placeId === candidate.id)) return { isError: true, content: `${candidate.name} è già nell'itinerario.` };
+
+    const reason = typeof input.reason === 'string' ? input.reason.trim().slice(0, 200) : '';
+    const alternatives = this.candidates.filter((item) => item.id !== candidate.id);
+    // Keep the proposal first so letters in the context stay aligned with what the user sees.
+    this.candidates = [candidate, ...alternatives];
+    this.actions = this.actions.filter((action) => action.type !== 'show_candidates' && action.type !== 'propose');
+    this.actions.push({ type: 'propose', proposal: { candidate, reason, alternatives: alternatives.slice(0, 5) } });
+    return { content: `Proposta mostrata: ${describeCandidate(candidate, 0)}. Alternative disponibili: ${alternatives.length}.` };
+  }
+
+  private dismissProposal(): ToolOutcome {
+    this.candidates = [];
+    this.actions = this.actions.filter((action) => action.type !== 'show_candidates' && action.type !== 'propose');
+    this.actions.push({ type: 'dismiss_proposal' });
+    return { content: 'Proposta ritirata, nessun risultato in vista.' };
+  }
+
+  private showOptions(): ToolOutcome {
+    if (!this.candidates.length) return { isError: true, content: 'Non ci sono risultati da mostrare: fai prima una ricerca.' };
+    this.actions = this.actions.filter((action) => action.type !== 'show_candidates' && action.type !== 'propose');
+    this.actions.push({ type: 'show_candidates', candidates: this.candidates });
+    return { content: `Lista mostrata all'utente:\n${this.candidates.map(describeCandidate).join('\n')}` };
+  }
+
+  private suggestReplies(input: Record<string, unknown>): ToolOutcome {
+    const replies = stringList(input.replies, 4).map((reply) => reply.slice(0, 40));
+    if (replies.length < 2) return { isError: true, content: 'Servono almeno due risposte rapide.' };
+    this.actions = this.actions.filter((action) => action.type !== 'suggest_replies');
+    this.actions.push({ type: 'suggest_replies', replies });
+    return { content: 'Risposte rapide impostate. Ora scrivi il messaggio finale.' };
   }
 
   private async placeDetails(input: Record<string, unknown>): Promise<ToolOutcome> {

@@ -1,5 +1,5 @@
 import type { Profile } from '@/lib/profile';
-import type { ChatAction, PlaceCandidate, Stop } from '@/lib/types';
+import type { ChatAction, PlaceCandidate, Proposal, Stop } from '@/lib/types';
 
 /** What the panel observes after a turn: agent output, app state and rendered DOM. */
 export type StepSnapshot = {
@@ -7,12 +7,16 @@ export type StepSnapshot = {
   actions: ChatAction[];
   itinerary: Stop[];
   candidates: PlaceCandidate[];
+  proposal: Proposal | null;
+  suggestions: string[];
   profile: Profile;
   dom: {
     stopMarkers: number;
     candidateMarkers: number;
     itineraryRows: number;
     placesCard: boolean;
+    proposalCard: boolean;
+    suggestionChips: number;
     lastAssistantText: string;
   };
   durationMs: number;
@@ -53,6 +57,37 @@ const within = (ms: number): Check => ({
   pass: (s) => s.durationMs <= ms,
 });
 
+/** Every turn must end with tappable quick replies, the core of the "propose, then confirm" dialogue. */
+const offersReplies: Check = {
+  label: 'Il turno si chiude con 2–4 risposte rapide toccabili',
+  pass: (s) => s.suggestions.length >= 2 && s.suggestions.length <= 4 && s.dom.suggestionChips === s.suggestions.length,
+};
+
+const proposalShown: Check = {
+  label: 'Una sola proposta è mostrata (scheda e pin)',
+  pass: (s) => s.proposal !== null && s.dom.proposalCard && s.dom.candidateMarkers === 1 && !s.dom.placesCard,
+};
+
+const proposalChanged: Check = {
+  label: 'La nuova proposta è diversa dalla precedente',
+  pass: (s, previous) => s.proposal !== null && s.proposal.candidate.id !== previous?.proposal?.candidate.id,
+};
+
+const proposalOrQuestion: Check = {
+  label: 'Propone qualcosa oppure fa una sola domanda mirata',
+  pass: (s) => s.proposal !== null || s.reply.includes('?'),
+};
+
+const noProposal: Check = {
+  label: 'Nessuna proposta o lista residua',
+  pass: (s) => s.proposal === null && s.candidates.length === 0 && !s.dom.proposalCard && !s.dom.placesCard && s.dom.candidateMarkers === 0,
+};
+
+const noList: Check = {
+  label: 'Nessuna lista di opzioni: si procede per proposte',
+  pass: (s) => !s.dom.placesCard,
+};
+
 const stopsAtLeast = (count: number): Check => ({
   label: `Almeno ${count} tappe nell'itinerario`,
   pass: (s) => s.itinerary.length >= count,
@@ -72,8 +107,7 @@ const stopsRemoved = (count: number): Check => ({
   label: `${count} ${count === 1 ? 'tappa rimossa' : 'tappe rimosse'}, le altre intatte`,
   pass: (s, previous) => {
     if (!previous || s.itinerary.length !== previous.itinerary.length - count) return false;
-    const remaining = new Set(s.itinerary.map((stop) => stop.id));
-    return s.itinerary.every((stop) => previous.itinerary.some((old) => old.id === stop.id)) && remaining.size === s.itinerary.length;
+    return s.itinerary.every((stop) => previous.itinerary.some((old) => old.id === stop.id));
   },
 });
 
@@ -82,41 +116,23 @@ const stopsUnchanged: Check = {
   pass: (s, previous) => (previous?.itinerary ?? []).every((old) => s.itinerary.some((stop) => stop.id === old.id)),
 };
 
-const candidatesShown: Check = {
-  label: 'Le opzioni sono mostrate (scheda e pin)',
-  pass: (s) => s.candidates.length > 0 && s.dom.placesCard && s.dom.candidateMarkers === s.candidates.length,
-};
-
-const noCandidates: Check = {
-  label: 'Nessuna opzione residua sulla mappa',
-  pass: (s) => s.candidates.length === 0 && !s.dom.placesCard && s.dom.candidateMarkers === 0,
-};
-
-const candidatesOrStops: Check = {
-  label: 'Mostra opzioni oppure aggiunge direttamente una tappa',
-  pass: (s, previous) => s.candidates.length > 0 || s.itinerary.length > (previous?.itinerary.length ?? 0),
-};
-
-const candidatesOrQuestion: Check = {
-  label: 'Mostra opzioni oppure fa una domanda mirata',
-  pass: (s) => s.candidates.length > 0 || s.reply.includes('?'),
+/** Accepting the proposal on the table adds exactly that place. */
+const acceptedProposal: Check = {
+  label: 'Il sì aggiunge la tappa proposta e chiude la proposta',
+  pass: (s, previous) => {
+    const proposed = previous?.proposal?.candidate.id;
+    if (!proposed) return false;
+    return s.itinerary.length === previous!.itinerary.length + 1
+      && s.itinerary.some((stop) => stop.placeId === proposed)
+      && (s.proposal === null || s.proposal.candidate.id !== proposed);
+  },
 };
 
 const guiMatchesState: Check = {
   label: 'Pin e righe della GUI coincidono con lo stato',
   pass: (s) => s.dom.stopMarkers === s.itinerary.length
     && s.dom.itineraryRows === s.itinerary.length
-    && s.dom.candidateMarkers === s.candidates.length,
-};
-
-const asksQuestion: Check = {
-  label: 'Il modello fa una domanda prima di cercare',
-  pass: (s) => s.reply.includes('?'),
-};
-
-const searchesWithoutAsking: Check = {
-  label: 'Usa le preferenze salvate senza richiederle',
-  pass: (s) => s.candidates.length > 0 || s.itinerary.length > 0,
+    && s.dom.candidateMarkers === (s.proposal ? 1 : s.candidates.length),
 };
 
 const profileFlag = (key: 'slowPace' | 'avoidQueues' | 'noFish' | 'markets', label: string): Check => ({
@@ -167,82 +183,100 @@ const timesShiftedBy = (minutes: number): Check => ({
   },
 });
 
-const choseOrSkipped: Check = {
-  label: 'La scelta aggiunge la tappa e svuota le opzioni (se ce n\'erano)',
-  pass: (s, previous) => (previous?.candidates.length ?? 0) === 0
-    || (s.itinerary.length === previous!.itinerary.length + 1 && s.candidates.length === 0),
-};
-
-const chose = (count: number): Check => ({
-  label: `${count === 1 ? 'La scelta aggiunge' : 'Le scelte aggiungono'} ${count} ${count === 1 ? 'tappa' : 'tappe'} e svuota le opzioni`,
-  pass: (s, previous) => s.itinerary.length === (previous?.itinerary.length ?? 0) + count && s.candidates.length === 0,
-});
-
 // ---------------------------------------------------------------------------
-// Scenarios
+// Scenarios: the user mostly answers yes or no
 // ---------------------------------------------------------------------------
 
 const single = (title: string, steps: Step[]): Session[] => [{ title, steps }];
+const base = [replied, within(60_000), offersReplies];
 
 export const scenarios: Scenario[] = [
   {
-    id: 'full-plan',
-    title: 'Itinerario completo',
-    description: 'Monumenti aggiunti in automatico, preferenza alimentare salvata, poi il pranzo.',
-    sessions: single('Mattina', [
+    id: 'propose-first',
+    title: 'Cicero propone, io dico sì',
+    description: 'Dal tempo disponibile arriva subito una proposta concreta; ogni sì porta alla proposta successiva.',
+    sessions: single('Due ore libere', [
       {
-        say: 'Ho tre ore libere, non mangio pesce. Organizza tu: prima i monumenti principali, poi un posto dove pranzare.',
-        checks: [replied, within(60_000), stopsAtLeast(2), noCandidates, guiMatchesState, profileFlag('noFish', 'niente pesce')],
+        say: 'Ho un paio d’ore libere, fai tu.',
+        checks: [...base, proposalShown, noList, stopsEqual(0), guiMatchesState],
       },
       {
-        say: 'Una trattoria classica milanese, senza fretta.',
-        checks: [replied, within(60_000), candidatesShown, guiMatchesState],
+        say: 'Sì, aggiungila.',
+        checks: [...base, acceptedProposal, noList, guiMatchesState],
       },
       {
-        say: 'Aggiungi l’opzione A.',
-        checks: [replied, within(60_000), choseOrSkipped, guiMatchesState],
+        say: 'Sì, va bene anche questa.',
+        checks: [...base, stopsAtLeast(2), noList, guiMatchesState],
+      },
+      {
+        say: 'Basta così, grazie.',
+        checks: [...base, stopsUnchanged, noProposal, guiMatchesState],
       },
     ]),
   },
   {
-    id: 'cafe-question',
-    title: 'Caffè: domanda, poi ricerca',
-    description: 'Senza preferenze salvate il modello chiede prima; la risposta viene appresa e cercata.',
+    id: 'decline-then-accept',
+    title: 'Un caffè: no, no, poi sì',
+    description: 'Senza preferenze Cicero propone un default; due rifiuti portano alternative già trovate, poi il sì aggiunge.',
     sessions: single('Pausa', [
       {
-        say: 'Trova un caffè qui vicino.',
-        checks: [replied, within(45_000), asksQuestion, stopsEqual(0), noCandidates],
+        say: 'Vorrei un caffè qui vicino.',
+        checks: [...base, proposalShown, noList, stopsEqual(0), guiMatchesState],
       },
       {
-        say: 'Un espresso veloce al banco.',
-        checks: [replied, within(60_000), candidatesShown, learned('cafe', 'caffè'), guiMatchesState],
+        say: 'No, un’altra.',
+        checks: [...base, proposalShown, proposalChanged, stopsEqual(0), guiMatchesState],
+      },
+      {
+        say: 'No, preferisco un posto tranquillo dove sedermi.',
+        checks: [...base, proposalShown, proposalChanged, stopsEqual(0), guiMatchesState],
+      },
+      {
+        say: 'Sì, perfetto.',
+        // The preference may be saved at the motivated refusal or at the confirming yes: both are fine.
+        checks: [...base, acceptedProposal, learned('cafe', 'caffè'), guiMatchesState],
+      },
+    ]),
+  },
+  {
+    id: 'full-plan',
+    title: 'Organizza tu: monumenti, poi pranzo',
+    description: 'Con "organizza tu" le tappe vengono aggiunte insieme; la preferenza alimentare è salvata e il pranzo viene proposto.',
+    sessions: single('Mattina', [
+      {
+        say: 'Ho tre ore, non mangio pesce. Organizza tu: prima i monumenti principali, poi proponimi dove pranzare.',
+        checks: [...base, within(90_000), stopsAtLeast(2), noList, profileFlag('noFish', 'niente pesce'), proposalOrQuestion, guiMatchesState],
+      },
+      {
+        say: 'Sì, va bene.',
+        checks: [...base, stopsAtLeast(3), noList, guiMatchesState],
       },
     ]),
   },
   {
     id: 'edit-plan',
     title: 'Modifica del percorso',
-    description: 'Aggiunta di una tappa nominata, spostamento orari e rimozione.',
+    description: 'Aggiunte esplicite, riordino, spostamento orari e rimozione.',
     sessions: single('Ritocchi', [
       {
-        say: 'Aggiungi il Duomo di Milano come tappa.',
-        checks: [replied, within(60_000), stopsEqual(1), guiMatchesState],
+        say: 'Aggiungi direttamente il Duomo di Milano, senza chiedere.',
+        checks: [...base, stopsEqual(1), guiMatchesState],
       },
       {
-        say: 'Aggiungi anche il Castello Sforzesco.',
-        checks: [replied, within(60_000), stopsEqual(2), stopsUnchanged, guiMatchesState],
+        say: 'Aggiungi direttamente anche il Castello Sforzesco.',
+        checks: [...base, stopsEqual(2), stopsUnchanged, guiMatchesState],
       },
       {
         say: 'Metti il Castello prima del Duomo.',
-        checks: [replied, within(45_000), stopsEqual(2), firstStopMatches(/castello/i, 'il Castello'), timesAscending, guiMatchesState],
+        checks: [...base, stopsEqual(2), firstStopMatches(/castello/i, 'il Castello'), timesAscending, guiMatchesState],
       },
       {
         say: 'Sposta tutto avanti di un’ora.',
-        checks: [replied, within(45_000), stopsEqual(2), timesShiftedBy(60)],
+        checks: [...base, stopsEqual(2), timesShiftedBy(60)],
       },
       {
         say: 'Togli l’ultima tappa.',
-        checks: [replied, within(45_000), stopsEqual(1), firstStopMatches(/castello/i, 'il Castello'), guiMatchesState],
+        checks: [...base, stopsEqual(1), firstStopMatches(/castello/i, 'il Castello'), guiMatchesState],
       },
     ]),
   },
@@ -253,18 +287,18 @@ export const scenarios: Scenario[] = [
     sessions: single('Una frase', [
       {
         say: 'Preferisco un ritmo tranquillo, senza fretta.',
-        checks: [replied, within(45_000), profileFlag('slowPace', 'ritmo tranquillo'), stopsEqual(0)],
+        checks: [...base, profileFlag('slowPace', 'ritmo tranquillo'), stopsEqual(0)],
       },
     ]),
   },
   {
     id: 'no-invention',
     title: 'Nessuna invenzione',
-    description: 'Una richiesta impossibile non produce tappe.',
+    description: 'Una richiesta impossibile non produce tappe né proposte inventate.',
     sessions: single('Provocazione', [
       {
         say: 'Prenotami un tavolo al ristorante di Gino sulla Luna per stasera.',
-        checks: [replied, within(60_000), stopsEqual(0)],
+        checks: [...base, stopsEqual(0), noProposal],
       },
     ]),
   },
@@ -275,50 +309,54 @@ export const scenarios: Scenario[] = [
   {
     id: 'indecisive-afternoon',
     title: 'Indeciso: museo, poi shopping, poi caffè',
-    description: 'Cambia idea sul museo, passa allo shopping, aggiunge due tappe, poi un caffè, poi taglia. Il giorno dopo le preferenze devono essere ricordate.',
+    description: 'Accetta un museo, cambia idea e passa allo shopping, aggiunge, taglia, sposta. Il giorno dopo le preferenze guidano le proposte.',
     sessions: [
       {
         title: 'Sessione 1 · pomeriggio indeciso',
         steps: [
           {
-            say: 'Ho tutto il pomeriggio libero ma non so bene cosa fare. Forse un museo?',
-            checks: [replied, within(60_000), candidatesOrQuestion, stopsEqual(0)],
+            say: 'Ho tutto il pomeriggio libero ma non so bene cosa fare.',
+            checks: [...base, proposalOrQuestion, noList, stopsEqual(0), guiMatchesState],
           },
           {
-            say: 'Mmm, arte contemporanea più che altro.',
-            checks: [replied, within(60_000), candidatesOrStops, learned('museum', 'musei'), guiMatchesState],
+            say: 'Mmm, preferirei un museo di arte contemporanea.',
+            checks: [...base, proposalShown, learned('museum', 'musei'), stopsEqual(0), guiMatchesState],
           },
           {
-            say: 'Ok, prendi la B.',
-            checks: [replied, within(60_000), choseOrSkipped, stopsAtLeast(1), guiMatchesState],
+            say: 'Sì, va bene.',
+            checks: [...base, acceptedProposal, guiMatchesState],
           },
           {
-            say: 'Anzi no, ho cambiato idea: niente musei oggi, toglilo. Preferisco fare shopping.',
-            checks: [replied, within(60_000), stopsEqual(0), noStopMatching(/muse/i, 'museo'), candidatesOrQuestion],
+            say: 'Anzi no, ho cambiato idea: toglilo, preferisco fare shopping vintage.',
+            checks: [...base, stopsEqual(0), noStopMatching(/muse/i, 'museo'), proposalShown, learned('shopping', 'shopping'), guiMatchesState],
           },
           {
-            say: 'Vintage e negozi di dischi.',
-            checks: [replied, within(60_000), candidatesShown, learned('shopping', 'shopping'), guiMatchesState],
+            say: 'Sì.',
+            checks: [...base, acceptedProposal, guiMatchesState],
           },
           {
-            say: 'Aggiungi la A e la C.',
-            checks: [replied, within(60_000), chose(2), guiMatchesState],
+            say: 'Aggiungine un altro, magari di dischi.',
+            checks: [...base, proposalOrQuestion, stopsUnchanged, guiMatchesState],
           },
           {
-            say: 'Poi un caffè vicino all’ultima tappa, uno tranquillo dove sedermi un po’.',
-            checks: [replied, within(60_000), candidatesOrStops, stopsUnchanged, guiMatchesState],
+            say: 'Sì, aggiungilo.',
+            checks: [...base, stopsEqual(2), noList, guiMatchesState],
           },
           {
-            say: 'Il primo va benissimo.',
-            checks: [replied, within(60_000), choseOrSkipped, stopsAtLeast(3), guiMatchesState],
+            say: 'Poi un caffè tranquillo vicino all’ultima tappa.',
+            checks: [...base, proposalShown, stopsUnchanged, guiMatchesState],
+          },
+          {
+            say: 'Perfetto, sì.',
+            checks: [...base, acceptedProposal, stopsEqual(3), guiMatchesState],
           },
           {
             say: 'Togli la seconda tappa, non ho tempo per tutto.',
-            checks: [replied, within(45_000), stopsRemoved(1), guiMatchesState],
+            checks: [...base, stopsRemoved(1), guiMatchesState],
           },
           {
             say: 'Sposta tutto di mezz’ora più tardi.',
-            checks: [replied, within(45_000), timesShiftedBy(30), guiMatchesState],
+            checks: [...base, timesShiftedBy(30), guiMatchesState],
           },
         ],
       },
@@ -326,16 +364,16 @@ export const scenarios: Scenario[] = [
         title: 'Sessione 2 · il giorno dopo',
         steps: [
           {
-            say: 'Oggi ho di nuovo voglia di fare un po’ di shopping.',
-            checks: [replied, within(60_000), learnedStillThere('shopping', 'shopping'), searchesWithoutAsking, guiMatchesState],
+            say: 'Oggi ho di nuovo voglia di fare shopping.',
+            checks: [...base, learnedStillThere('shopping', 'shopping'), proposalShown, noList, guiMatchesState],
           },
           {
-            say: 'E poi un museo, di quelli che piacciono a me.',
-            checks: [replied, within(60_000), learnedStillThere('museum', 'musei'), candidatesOrStops, guiMatchesState],
+            say: 'Sì.',
+            checks: [...base, acceptedProposal, guiMatchesState],
           },
           {
-            say: 'No, lascia stare il museo. Solo lo shopping: aggiungi la prima opzione che avevi trovato.',
-            checks: [replied, within(60_000), noStopMatching(/muse/i, 'museo'), candidatesOrStops, guiMatchesState],
+            say: 'Basta così per oggi.',
+            checks: [...base, stopsEqual(1), noProposal, guiMatchesState],
           },
         ],
       },
@@ -344,38 +382,38 @@ export const scenarios: Scenario[] = [
   {
     id: 'dinner-second-thoughts',
     title: 'Cena e serata con ripensamenti',
-    description: 'Giapponese poi pizzeria, serata jazz, poi sostituisce la pizzeria, poi cancella la serata. La settimana dopo vuole cenare "come al solito" e poi cambia di nuovo.',
+    description: 'Pizzeria accettata, serata scelta da Cicero, poi la pizzeria viene sostituita e la serata cancellata. Una settimana dopo "come al solito", poi cambia idea.',
     sessions: [
       {
         title: 'Sessione 1 · stasera',
         steps: [
           {
             say: 'Stasera vorrei cenare fuori e poi fare qualcosa.',
-            checks: [replied, within(60_000), asksQuestion, stopsEqual(0)],
+            checks: [...base, proposalOrQuestion, noList, stopsEqual(0), guiMatchesState],
           },
           {
-            say: 'Cucina giapponese… anzi no, meglio una pizzeria.',
-            checks: [replied, within(60_000), candidatesShown, learnedMatches('restaurant', /pizz/i, 'pizzeria'), guiMatchesState],
+            say: 'Una pizzeria, per favore.',
+            checks: [...base, proposalShown, learnedMatches('restaurant', /pizz/i, 'pizzeria'), stopsEqual(0), guiMatchesState],
           },
           {
-            say: 'Prendo la C.',
-            checks: [replied, within(60_000), chose(1), guiMatchesState],
+            say: 'Sì.',
+            checks: [...base, acceptedProposal, guiMatchesState],
           },
           {
-            say: 'Per dopo cena qualcosa con musica dal vivo, jazz se possibile. Scegli tu il migliore e aggiungilo.',
-            checks: [replied, within(60_000), stopsGrewBy(1), stopsUnchanged, noCandidates, guiMatchesState],
+            say: 'Per dopo cena qualcosa con musica dal vivo: scegli tu e aggiungilo direttamente.',
+            checks: [...base, stopsGrewBy(1), stopsUnchanged, guiMatchesState],
           },
           {
-            say: 'Ripensandoci, la pizzeria non mi convince. Toglila e cercami una trattoria al suo posto.',
-            checks: [replied, within(60_000), noStopMatching(/pizz/i, 'pizzeria'), candidatesOrStops, guiMatchesState],
+            say: 'Ripensandoci la pizzeria non mi convince: toglila e proponimi una trattoria.',
+            checks: [...base, noStopMatching(/pizz/i, 'pizzeria'), proposalShown, guiMatchesState],
           },
           {
-            say: 'Ok, aggiungi la A.',
-            checks: [replied, within(60_000), choseOrSkipped, stopsEqual(2), guiMatchesState],
+            say: 'Sì, va bene.',
+            checks: [...base, acceptedProposal, stopsEqual(2), guiMatchesState],
           },
           {
-            say: 'Alla fine niente serata, sono stanco: tieni solo la cena e cancella il resto.',
-            checks: [replied, within(60_000), stopsEqual(1), noStopMatching(/jazz|bar|club|live|music/i, 'per la serata'), guiMatchesState],
+            say: 'Alla fine niente serata, sono stanco: tieni solo la cena.',
+            checks: [...base, stopsEqual(1), noStopMatching(/jazz|club|live|music|teatro/i, 'per la serata'), guiMatchesState],
           },
         ],
       },
@@ -384,15 +422,15 @@ export const scenarios: Scenario[] = [
         steps: [
           {
             say: 'Ho voglia di cenare fuori anche stasera, come al solito.',
-            checks: [replied, within(60_000), learnedStillThere('restaurant', 'ristoranti'), searchesWithoutAsking, guiMatchesState],
+            checks: [...base, learnedStillThere('restaurant', 'ristoranti'), proposalShown, noList, guiMatchesState],
           },
           {
-            say: 'No aspetta, stasera niente pizza: qualcosa di completamente diverso, sorprendimi.',
-            checks: [replied, within(60_000), candidatesOrStops, guiMatchesState],
+            say: 'No, stasera qualcosa di completamente diverso: sorprendimi.',
+            checks: [...base, proposalShown, proposalChanged, guiMatchesState],
           },
           {
-            say: 'La B.',
-            checks: [replied, within(60_000), choseOrSkipped, stopsAtLeast(1), guiMatchesState],
+            say: 'Sì.',
+            checks: [...base, acceptedProposal, guiMatchesState],
           },
         ],
       },
@@ -401,36 +439,39 @@ export const scenarios: Scenario[] = [
   {
     id: 'full-day-cancellations',
     title: 'Giornata piena, poi cancella tutto',
-    description: 'Cinque tappe costruite in sequenza, due monumenti tolti, uno rimesso, poi tabula rasa e un solo caffè.',
+    description: 'Cinque tappe in sequenza con "fai tu", due monumenti tolti, uno rimesso, tabula rasa e un solo caffè.',
     sessions: single('Sessione unica · giornata intera', [
       {
         say: 'Ho l’intera giornata. Organizza tu: tre monumenti, poi un pranzo veloce, poi un museo.',
-        checks: [replied, within(90_000), stopsAtLeast(3), candidatesOrQuestion, guiMatchesState],
+        checks: [...base, within(90_000), stopsAtLeast(3), noList, guiMatchesState],
       },
       {
-        say: 'Per pranzo un panino o street food, qualsiasi cosa va bene: scegli tu e aggiungilo.',
-        // Dopo l'aggiunta il modello può già proporre le opzioni per il museo: le opzioni residue sono legittime.
-        checks: [replied, within(60_000), stopsGrewBy(1), stopsUnchanged, guiMatchesState],
+        say: 'Per pranzo un panino o street food, scegli tu e aggiungilo.',
+        checks: [...base, stopsGrewBy(1), stopsUnchanged, guiMatchesState],
       },
       {
         say: 'Per il museo scegli tu tra storia e scienza e aggiungilo direttamente.',
-        checks: [replied, within(60_000), stopsGrewBy(1), stopsUnchanged, guiMatchesState],
+        checks: [...base, stopsGrewBy(1), stopsUnchanged, guiMatchesState],
       },
       {
         say: 'Sono troppe. Togli il secondo e il terzo monumento.',
-        checks: [replied, within(60_000), stopsRemoved(2), guiMatchesState],
+        checks: [...base, stopsRemoved(2), guiMatchesState],
       },
       {
-        say: 'Però rimetti un monumento vicino al museo, uno solo, scegli tu.',
-        checks: [replied, within(60_000), candidatesOrStops, stopsUnchanged, guiMatchesState],
+        say: 'Però proponimi un monumento vicino al museo.',
+        checks: [...base, proposalShown, stopsUnchanged, guiMatchesState],
+      },
+      {
+        say: 'Sì.',
+        checks: [...base, acceptedProposal, guiMatchesState],
       },
       {
         say: 'Cancella tutto e ricominciamo da zero.',
-        checks: [replied, within(45_000), stopsEqual(0), noCandidates, guiMatchesState],
+        checks: [...base, stopsEqual(0), noProposal, guiMatchesState],
       },
       {
         say: 'Solo un caffè: un espresso veloce al banco.',
-        checks: [replied, within(60_000), candidatesOrStops, guiMatchesState],
+        checks: [...base, proposalShown, guiMatchesState],
       },
     ]),
   },

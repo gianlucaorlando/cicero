@@ -18,7 +18,7 @@ export function getAgentConfig() {
   return {
     apiKey,
     model: process.env.ANTHROPIC_MODEL?.trim() || DEFAULT_MODEL,
-    effort: effort && ['low', 'medium', 'high', 'xhigh', 'max'].includes(effort) ? effort : 'medium' as Effort,
+    effort: effort && ['low', 'medium', 'high', 'xhigh', 'max'].includes(effort) ? effort : 'low' as Effort,
   };
 }
 
@@ -32,6 +32,7 @@ function historyToMessages(history: ChatRequest['messages']): Anthropic.Beta.Bet
 
 function metaFor(actions: ChatAction[]) {
   if (actions.some((action) => action.type === 'add_stops')) return 'Tappe verificate su Google Places';
+  if (actions.some((action) => action.type === 'propose')) return 'Proposta verificata su Google Places';
   if (actions.some((action) => action.type === 'show_candidates')) return 'Ricerca Google Places completata';
   if (actions.some((action) => action.type === 'remove_stops' || action.type === 'shift_times' || action.type === 'set_itinerary')) return 'Itinerario aggiornato, non rigenerato';
   if (actions.some((action) => action.type === 'update_profile')) return 'Profilo aggiornato dalla conversazione';
@@ -73,10 +74,10 @@ export async function runAgent(request: ChatRequest): Promise<ChatResponse> {
       messages,
     });
 
-    reply = textOf(response.content) || reply;
+    const text = textOf(response.content);
 
     if (response.stop_reason === 'refusal') {
-      return { reply: reply || 'Preferisco non rispondere a questa richiesta. Posso aiutarti con l\'itinerario.', actions: session.actions };
+      return { reply: text || reply || 'Preferisco non rispondere a questa richiesta. Posso aiutarti con l\'itinerario.', actions: session.actions };
     }
 
     if (response.stop_reason === 'pause_turn') {
@@ -85,7 +86,10 @@ export async function runAgent(request: ChatRequest): Promise<ChatResponse> {
     }
 
     const toolUses = response.content.filter((block): block is Anthropic.Beta.BetaToolUseBlock => block.type === 'tool_use');
-    if (response.stop_reason !== 'tool_use' || !toolUses.length) break;
+    if (response.stop_reason !== 'tool_use' || !toolUses.length) {
+      reply = text || reply;
+      break;
+    }
 
     messages.push({ role: 'assistant', content: response.content });
     const results = await Promise.all(toolUses.map(async (toolUse): Promise<Anthropic.Beta.BetaToolResultBlockParam> => {
@@ -93,6 +97,16 @@ export async function runAgent(request: ChatRequest): Promise<ChatResponse> {
       return { type: 'tool_result', tool_use_id: toolUse.id, content: outcome.content, is_error: outcome.isError || undefined };
     }));
     messages.push({ role: 'user', content: results });
+
+    // suggest_replies is the closing move of a turn: the user-facing text travels in the same
+    // message, so there is no need for another round trip just to say goodbye.
+    const closing = toolUses.some((toolUse) => toolUse.name === 'suggest_replies')
+      && session.actions.some((action) => action.type === 'suggest_replies');
+    if (closing && text) {
+      reply = text;
+      break;
+    }
+    reply = text || reply;
   }
 
   return {

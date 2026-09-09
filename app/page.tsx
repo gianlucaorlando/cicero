@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type SubmitEvent } from 'react';
 
-import { ConversationPanel, type QuickPrompt } from '@/components/cicero/conversation-panel';
+import { ConversationPanel } from '@/components/cicero/conversation-panel';
 import { LocationSheet } from '@/components/cicero/location-sheet';
 import { MapStage } from '@/components/cicero/map-stage';
 import { ProfileSheet, type ManualPreferenceKey } from '@/components/cicero/profile-sheet';
@@ -20,14 +20,6 @@ import { candidateLetter, localTimeLabel, pluralStops } from '@/lib/format';
 import { itinerarySignature } from '@/lib/geo';
 import type { PreferenceCategory } from '@/lib/profile';
 import type { PlaceCandidate, SavedRoute } from '@/lib/types';
-
-const quickPrompts: QuickPrompt[] = [
-  { label: 'Cosa faccio adesso?', text: 'Cosa faccio adesso? Ho un paio d’ore libere.' },
-  { label: 'Caffè qui vicino', text: 'Trova un caffè qui vicino.' },
-  { label: 'Shopping', text: 'Vorrei fare un po’ di shopping.' },
-  { label: 'Ritmo tranquillo', text: 'Preferisco un ritmo tranquillo: poche tappe e più margine.' },
-  { label: 'Qualcosa al coperto', text: 'Piove: proponimi qualcosa al coperto.' },
-];
 
 function hideSplash() {
   const splash = document.getElementById('app-splash');
@@ -59,6 +51,8 @@ export default function Home() {
   const [mapOpen, setMapOpen] = useState(true);
   const [routeFocusToken, setRouteFocusToken] = useState(0);
   const [testPanelOpen, setTestPanelOpen] = useState(false);
+  /** Id of the proposal whose alternatives are expanded; a new proposal collapses them again. */
+  const [alternativesOpenFor, setAlternativesOpenFor] = useState<string | null>(null);
 
   const speech = useSpeechInput(useCallback((transcript: string) => setInput(transcript), []));
 
@@ -83,7 +77,10 @@ export default function Home() {
   }, []);
 
   const { profile } = profileSync;
-  const { itinerary, candidates } = conversation;
+  const { itinerary, candidates, proposal, suggestions } = conversation;
+  const alternativesOpen = proposal !== null && alternativesOpenFor === proposal.candidate.id;
+  // With a proposal on the table the map shows only that pin, unless the user asked to see the alternatives.
+  const visibleCandidates = proposal && !alternativesOpen ? candidates.slice(0, 1) : candidates;
   const { city, locationLabel, coords } = location;
 
   const ask = useCallback((text: string) => conversation.send(text, {
@@ -115,7 +112,20 @@ export default function Home() {
 
   function selectCandidate(candidate: PlaceCandidate) {
     const index = candidates.findIndex((item) => item.id === candidate.id);
-    void ask(`Aggiungi ${index >= 0 ? `l’opzione ${candidateLetter(index)}, ` : ''}${candidate.name}.`);
+    const letter = index >= 0 ? ` (${candidateLetter(index)})` : '';
+    void ask(proposal ? `Preferisco ${candidate.name}${letter}: aggiungi quella.` : `Aggiungi ${candidate.name}${letter}.`);
+  }
+
+  function acceptProposal() {
+    if (proposal) void ask('Sì, aggiungila.');
+  }
+
+  function declineProposal() {
+    if (proposal) void ask('No, proponimi un’altra.');
+  }
+
+  function toggleAlternatives() {
+    if (proposal) setAlternativesOpenFor((current) => (current === proposal.candidate.id ? null : proposal.candidate.id));
   }
 
   function submitCity(event: SubmitEvent<HTMLFormElement>) {
@@ -169,17 +179,13 @@ export default function Home() {
     conversation.notify(`Ho riaperto “${route.name}” con ${pluralStops(route.stops.length)}.`, 'Percorso caricato dal profilo');
   }
 
-  const prompts = conversation.awaitingConsent
-    ? [{ label: 'Sì, proponilo', text: 'Sì, proponimi un itinerario.' }, ...quickPrompts]
-    : quickPrompts;
-
   return (
     <main className={`app-shell ${mapOpen ? '' : 'map-collapsed'}`}>
       <MapStage
         coords={coords}
         onMovePin={location.movePin}
         stops={itinerary}
-        candidates={candidates}
+        candidates={visibleCandidates}
         onSelectCandidate={selectCandidate}
         selectionDisabled={conversation.thinking}
         focusToken={routeFocusToken}
@@ -212,12 +218,17 @@ export default function Home() {
         onOpenProfile={() => setProfileOpen(true)}
         messages={conversation.messages}
         thinking={conversation.thinking}
+        proposal={proposal}
+        onAcceptProposal={acceptProposal}
+        onDeclineProposal={declineProposal}
+        alternativesOpen={alternativesOpen}
+        onToggleAlternatives={toggleAlternatives}
         candidates={candidates}
         onSelectCandidate={selectCandidate}
         itinerary={itinerary}
         onRemoveStop={conversation.removeStop}
-        quickPrompts={prompts}
-        onQuickPrompt={(text) => void ask(text)}
+        suggestions={suggestions}
+        onSuggestion={(text) => void ask(text)}
         input={input}
         onInputChange={setInput}
         onSubmit={submitMessage}
@@ -282,6 +293,8 @@ export default function Home() {
           ask={ask}
           itinerary={itinerary}
           candidates={candidates}
+          proposal={proposal}
+          suggestions={suggestions}
           profile={profile}
           setProfile={profileSync.setProfile}
           reset={conversation.reset}

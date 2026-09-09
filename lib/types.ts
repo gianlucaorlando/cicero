@@ -90,7 +90,10 @@ export type ChatContext = {
   weather: string;
   localTime: string;
   itinerary: Stop[];
+  /** Places found by the last search: the current proposal first, then its alternatives. */
   candidates: PlaceCandidate[];
+  /** Whether candidates[0] is being proposed to the user right now. */
+  proposing: boolean;
   profile: Profile;
 };
 
@@ -108,9 +111,19 @@ export type ProfilePatch = {
   forget?: Array<{ category: PreferenceCategory; value: string }>;
 };
 
+/** One concrete suggestion the user can accept with a tap. Alternatives stay available on request. */
+export type Proposal = {
+  candidate: PlaceCandidate;
+  reason: string;
+  alternatives: PlaceCandidate[];
+};
+
 /** Side effects the agent asks the client to apply after a turn. */
 export type ChatAction =
   | { type: 'show_candidates'; candidates: PlaceCandidate[] }
+  | { type: 'propose'; proposal: Proposal }
+  | { type: 'dismiss_proposal' }
+  | { type: 'suggest_replies'; replies: string[] }
   | { type: 'add_stops'; stops: Stop[] }
   | { type: 'remove_stops'; stopIds: string[] }
   | { type: 'shift_times'; minutes: number }

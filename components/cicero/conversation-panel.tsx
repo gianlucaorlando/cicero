@@ -5,11 +5,10 @@ import { Check, Mic, Send, SlidersHorizontal, Sparkles } from 'lucide-react';
 
 import { ItineraryCard } from '@/components/cicero/itinerary-card';
 import { PlacesCard } from '@/components/cicero/places-card';
+import { ProposalCard } from '@/components/cicero/proposal-card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { ChatMessage, LatLng, PlaceCandidate, Stop } from '@/lib/types';
-
-export type QuickPrompt = { label: string; text: string };
+import type { ChatMessage, LatLng, PlaceCandidate, Proposal, Stop } from '@/lib/types';
 
 type Props = {
   mapOpen: boolean;
@@ -20,12 +19,17 @@ type Props = {
   onOpenProfile: () => void;
   messages: ChatMessage[];
   thinking: boolean;
+  proposal: Proposal | null;
+  onAcceptProposal: () => void;
+  onDeclineProposal: () => void;
+  alternativesOpen: boolean;
+  onToggleAlternatives: () => void;
   candidates: PlaceCandidate[];
   onSelectCandidate: (candidate: PlaceCandidate) => void;
   itinerary: Stop[];
   onRemoveStop: (stopId: string) => void;
-  quickPrompts: QuickPrompt[];
-  onQuickPrompt: (text: string) => void;
+  suggestions: string[];
+  onSuggestion: (text: string) => void;
   input: string;
   onInputChange: (value: string) => void;
   onSubmit: (event: SubmitEvent<HTMLFormElement>) => void;
@@ -42,12 +46,17 @@ export function ConversationPanel({
   onOpenProfile,
   messages,
   thinking,
+  proposal,
+  onAcceptProposal,
+  onDeclineProposal,
+  alternativesOpen,
+  onToggleAlternatives,
   candidates,
   onSelectCandidate,
   itinerary,
   onRemoveStop,
-  quickPrompts,
-  onQuickPrompt,
+  suggestions,
+  onSuggestion,
   input,
   onInputChange,
   onSubmit,
@@ -58,7 +67,7 @@ export function ConversationPanel({
 
   useEffect(() => {
     messagesEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, [messages, thinking, candidates]);
+  }, [messages, thinking, proposal, candidates, alternativesOpen]);
 
   return (
     <section className="conversation" aria-label="Conversazione con Cicero">
@@ -87,8 +96,25 @@ export function ConversationPanel({
           </article>
         ))}
 
-        {candidates.length > 0 && <PlacesCard candidates={candidates} disabled={thinking} onSelect={onSelectCandidate} />}
         {itinerary.length > 0 && <ItineraryCard origin={origin} stops={itinerary} onRemove={onRemoveStop} />}
+
+        {proposal ? (
+          <>
+            <ProposalCard
+              proposal={proposal}
+              disabled={thinking}
+              onAccept={onAcceptProposal}
+              onDecline={onDeclineProposal}
+              alternativesOpen={alternativesOpen}
+              onToggleAlternatives={onToggleAlternatives}
+            />
+            {alternativesOpen && proposal.alternatives.length > 0 && (
+              <PlacesCard candidates={proposal.alternatives} disabled={thinking} onSelect={onSelectCandidate} letterOffset={1} title="Le altre opzioni" />
+            )}
+          </>
+        ) : candidates.length > 0 && (
+          <PlacesCard candidates={candidates} disabled={thinking} onSelect={onSelectCandidate} />
+        )}
 
         {thinking && (
           <article className="message assistant-message thinking-message">
@@ -99,11 +125,13 @@ export function ConversationPanel({
         <div ref={messagesEnd} />
       </div>
 
-      <div className="quick-prompts" aria-label="Suggerimenti rapidi">
-        {quickPrompts.map((prompt) => (
-          <button type="button" key={prompt.label} onClick={() => onQuickPrompt(prompt.text)} disabled={thinking}>{prompt.label}</button>
-        ))}
-      </div>
+      {suggestions.length > 0 && !thinking && (
+        <div className="quick-prompts" aria-label="Risposte rapide">
+          {suggestions.map((suggestion) => (
+            <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>
+          ))}
+        </div>
+      )}
 
       <form className="composer" onSubmit={onSubmit}>
         {speech.supported && (
@@ -122,7 +150,7 @@ export function ConversationPanel({
         <Input
           className="composer-input"
           aria-label="Messaggio"
-          placeholder={speech.listening ? 'Ti ascolto…' : 'Chiedi o cambia il programma…'}
+          placeholder={speech.listening ? 'Ti ascolto…' : 'Oppure scrivi qui…'}
           value={input}
           onChange={(event) => onInputChange(event.target.value)}
         />

@@ -11,20 +11,23 @@ type Props = {
   candidates: PlaceCandidate[];
   disabled: boolean;
   onSelect: (candidate: PlaceCandidate) => void;
+  /** Letters continue from this index (used when listing alternatives under a proposal). */
+  letterOffset?: number;
+  title?: string;
 };
 
-export function PlacesCard({ candidates, disabled, onSelect }: Props) {
+export function PlacesCard({ candidates, disabled, onSelect, letterOffset = 0, title = 'Scegli una tappa' }: Props) {
   return (
     <article className="places-card" aria-label="Luoghi verificati e recensioni disponibili">
       <div className="places-card-head">
-        <div><span>Vicino al punto scelto</span><strong>Scegli una tappa</strong></div>
+        <div><span>Vicino al punto scelto</span><strong>{title}</strong></div>
         <Badge variant="outline">live</Badge>
       </div>
       <div className="place-options">
         {candidates.map((place, index) => (
           <div className="place-option" key={place.id}>
             <button type="button" onClick={() => onSelect(place)} disabled={disabled}>
-              <span className="place-map-index" aria-hidden="true">{candidateLetter(index)}</span>
+              <span className="place-map-index" aria-hidden="true">{candidateLetter(index + letterOffset)}</span>
               <span className="place-option-copy">
                 <strong>{place.name}</strong>
                 <small>{humanDistance(place.distanceMeters)} · {place.address}</small>

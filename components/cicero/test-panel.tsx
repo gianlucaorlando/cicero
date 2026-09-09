@@ -6,7 +6,7 @@ import { Check, Copy, FlaskConical, LocateFixed, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createEmptyProfile, type Profile } from '@/lib/profile';
 import { scenarios, type Scenario, type Step, type StepSnapshot } from '@/lib/testing/scenarios';
-import type { ChatResponse, PlaceCandidate, Stop } from '@/lib/types';
+import type { ChatResponse, PlaceCandidate, Proposal, Stop } from '@/lib/types';
 
 type StepResult = {
   say: string;
@@ -23,6 +23,8 @@ type Props = {
   ask: (text: string) => Promise<ChatResponse | null>;
   itinerary: Stop[];
   candidates: PlaceCandidate[];
+  proposal: Proposal | null;
+  suggestions: string[];
   profile: Profile;
   setProfile: (profile: Profile) => void;
   reset: () => void;
@@ -43,6 +45,8 @@ function readDom(): StepSnapshot['dom'] {
     candidateMarkers: document.querySelectorAll('.map-candidate-marker').length,
     itineraryRows: document.querySelectorAll('.itinerary-card ol li').length,
     placesCard: document.querySelector('.places-card') !== null,
+    proposalCard: document.querySelector('.proposal-card') !== null,
+    suggestionChips: document.querySelectorAll('.quick-prompts button').length,
     lastAssistantText: assistant.at(-1)?.textContent || '',
   };
 }
@@ -92,17 +96,17 @@ function statusGlyph(status: StepResult['status']) {
  * state and DOM after every turn. Sessions inside a scenario restart the chat
  * but keep the profile, so memory across visits is tested too.
  */
-export function TestPanel({ ask, itinerary, candidates, profile, setProfile, reset, onClose }: Props) {
+export function TestPanel({ ask, itinerary, candidates, proposal, suggestions, profile, setProfile, reset, onClose }: Props) {
   const [selected, setSelected] = useState<string[]>(scenarios.map((scenario) => scenario.id));
   const [results, setResults] = useState<ScenarioResult[]>([]);
   const [running, setRunning] = useState(false);
   const [copied, setCopied] = useState(false);
-  const latest = useRef({ ask, itinerary, candidates, profile });
+  const latest = useRef({ ask, itinerary, candidates, proposal, suggestions, profile });
   const cancelled = useRef(false);
 
   useEffect(() => {
-    latest.current = { ask, itinerary, candidates, profile };
-  }, [ask, itinerary, candidates, profile]);
+    latest.current = { ask, itinerary, candidates, proposal, suggestions, profile };
+  }, [ask, itinerary, candidates, proposal, suggestions, profile]);
 
   const updateStep = useCallback((scenarioIndex: number, sessionIndex: number, stepIndex: number, patch: Partial<StepResult>) => {
     setResults((current) => current.map((scenario, sIndex) => (sIndex !== scenarioIndex ? scenario : {
@@ -118,12 +122,14 @@ export function TestPanel({ ask, itinerary, candidates, profile, setProfile, res
     const started = performance.now();
     const response = await latest.current.ask(step.say);
     await settle();
-    const { itinerary: stops, candidates: shown, profile: current } = latest.current;
+    const { itinerary: stops, candidates: shown, proposal: proposed, suggestions: replies, profile: current } = latest.current;
     const snapshot: StepSnapshot = {
       reply: response?.reply || '',
       actions: response?.actions || [],
       itinerary: stops,
       candidates: shown,
+      proposal: proposed,
+      suggestions: replies,
       profile: current,
       dom: readDom(),
       durationMs: Math.round(performance.now() - started),
