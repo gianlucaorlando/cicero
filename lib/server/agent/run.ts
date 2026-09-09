@@ -39,6 +39,16 @@ function metaFor(actions: ChatAction[]) {
   return undefined;
 }
 
+/** Quick replies used when the model ends a turn without suggesting any, so the tap-to-answer flow never breaks. */
+function fallbackReplies(actions: ChatAction[], request: ChatRequest) {
+  const proposing = actions.some((action) => action.type === 'propose')
+    || (request.context.proposing && !actions.some((action) => ['add_stops', 'dismiss_proposal', 'show_candidates'].includes(action.type)));
+  if (proposing) return ['Sì, aggiungila', 'Un’altra', 'Preferisco altro'];
+  const stops = request.context.itinerary.length + actions.filter((action) => action.type === 'add_stops').reduce((sum, action) => sum + (action.type === 'add_stops' ? action.stops.length : 0), 0);
+  if (stops > 0) return ['Proponimi la prossima tappa', 'Va bene così', 'Cambia qualcosa'];
+  return ['Proponimi qualcosa', 'Ho un paio d’ore', 'Solo un caffè'];
+}
+
 function textOf(content: Anthropic.Beta.BetaContentBlock[]) {
   return content
     .filter((block): block is Anthropic.Beta.BetaTextBlock => block.type === 'text')
@@ -107,6 +117,10 @@ export async function runAgent(request: ChatRequest): Promise<ChatResponse> {
       break;
     }
     reply = text || reply;
+  }
+
+  if (!session.actions.some((action) => action.type === 'suggest_replies')) {
+    session.actions.push({ type: 'suggest_replies', replies: fallbackReplies(session.actions, request) });
   }
 
   return {

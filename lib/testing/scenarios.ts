@@ -240,11 +240,11 @@ export const scenarios: Scenario[] = [
   },
   {
     id: 'full-plan',
-    title: 'Organizza tu: monumenti, poi pranzo',
-    description: 'Con "organizza tu" le tappe vengono aggiunte insieme; la preferenza alimentare è salvata e il pranzo viene proposto.',
+    title: 'Aggiungi direttamente: monumenti, poi pranzo',
+    description: 'Solo con una richiesta inequivocabile le tappe vengono aggiunte insieme; la preferenza alimentare è salvata e il pranzo viene proposto.',
     sessions: single('Mattina', [
       {
-        say: 'Ho tre ore, non mangio pesce. Organizza tu: prima i monumenti principali, poi proponimi dove pranzare.',
+        say: 'Ho tre ore, non mangio pesce. Aggiungi direttamente i monumenti principali senza chiedermi, poi proponimi dove pranzare.',
         checks: [...base, within(90_000), stopsAtLeast(2), noList, profileFlag('noFish', 'niente pesce'), proposalOrQuestion, guiMatchesState],
       },
       {
@@ -328,11 +328,12 @@ export const scenarios: Scenario[] = [
           },
           {
             say: 'Anzi no, ho cambiato idea: toglilo, preferisco fare shopping vintage.',
-            checks: [...base, stopsEqual(0), noStopMatching(/muse/i, 'museo'), proposalShown, learned('shopping', 'shopping'), guiMatchesState],
+            checks: [...base, stopsEqual(0), noStopMatching(/muse/i, 'museo'), proposalShown, guiMatchesState],
           },
           {
             say: 'Sì.',
-            checks: [...base, acceptedProposal, guiMatchesState],
+            // Preferences may be saved at the request or at the confirming yes.
+            checks: [...base, acceptedProposal, learned('shopping', 'shopping'), guiMatchesState],
           },
           {
             say: 'Aggiungine un altro, magari di dischi.',
@@ -393,11 +394,11 @@ export const scenarios: Scenario[] = [
           },
           {
             say: 'Una pizzeria, per favore.',
-            checks: [...base, proposalShown, learnedMatches('restaurant', /pizz/i, 'pizzeria'), stopsEqual(0), guiMatchesState],
+            checks: [...base, proposalShown, stopsEqual(0), guiMatchesState],
           },
           {
             say: 'Sì.',
-            checks: [...base, acceptedProposal, guiMatchesState],
+            checks: [...base, acceptedProposal, learnedMatches('restaurant', /pizz/i, 'pizzeria'), guiMatchesState],
           },
           {
             say: 'Per dopo cena qualcosa con musica dal vivo: scegli tu e aggiungilo direttamente.',
@@ -438,20 +439,23 @@ export const scenarios: Scenario[] = [
   },
   {
     id: 'full-day-cancellations',
-    title: 'Giornata piena, poi cancella tutto',
-    description: 'Cinque tappe in sequenza con "fai tu", due monumenti tolti, uno rimesso, tabula rasa e un solo caffè.',
+    title: 'Giornata piena, un sì alla volta, poi cancella tutto',
+    description: 'Cicero propone un monumento dopo l\'altro, poi pranzo e museo; l\'utente dice sì cinque volte, poi taglia, rimette, azzera e chiude con un caffè.',
     sessions: single('Sessione unica · giornata intera', [
       {
-        say: 'Ho l’intera giornata. Organizza tu: tre monumenti, poi un pranzo veloce, poi un museo.',
-        checks: [...base, within(90_000), stopsAtLeast(3), noList, guiMatchesState],
+        say: 'Ho l’intera giornata. Vorrei tre monumenti, poi un pranzo veloce, poi un museo: proponi tu, una cosa alla volta.',
+        checks: [...base, proposalShown, stopsEqual(0), noList, guiMatchesState],
+      },
+      { say: 'Sì.', checks: [...base, acceptedProposal, stopsEqual(1), guiMatchesState] },
+      { say: 'Sì.', checks: [...base, acceptedProposal, stopsEqual(2), guiMatchesState] },
+      { say: 'Sì.', checks: [...base, acceptedProposal, stopsEqual(3), guiMatchesState] },
+      {
+        say: 'Sì, e per pranzo va bene qualsiasi cosa veloce.',
+        checks: [...base, stopsAtLeast(4), stopsUnchanged, guiMatchesState],
       },
       {
-        say: 'Per pranzo un panino o street food, scegli tu e aggiungilo.',
-        checks: [...base, stopsGrewBy(1), stopsUnchanged, guiMatchesState],
-      },
-      {
-        say: 'Per il museo scegli tu tra storia e scienza e aggiungilo direttamente.',
-        checks: [...base, stopsGrewBy(1), stopsUnchanged, guiMatchesState],
+        say: 'Sì, aggiungilo.',
+        checks: [...base, stopsAtLeast(5), stopsUnchanged, guiMatchesState],
       },
       {
         say: 'Sono troppe. Togli il secondo e il terzo monumento.',
@@ -467,7 +471,8 @@ export const scenarios: Scenario[] = [
       },
       {
         say: 'Cancella tutto e ricominciamo da zero.',
-        checks: [...base, stopsEqual(0), noProposal, guiMatchesState],
+        // Emptying the plan may be followed by a fresh first proposal: that is the proactive style we want.
+        checks: [...base, stopsEqual(0), noList, guiMatchesState],
       },
       {
         say: 'Solo un caffè: un espresso veloce al banco.',
