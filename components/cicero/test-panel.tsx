@@ -21,6 +21,8 @@ type ScenarioResult = { id: string; sessions: SessionResult[] };
 
 type Props = {
   ask: (text: string) => Promise<ChatResponse | null>;
+  /** Triggers Cicero's opening move (the hidden event sent when the page opens). */
+  start: () => Promise<ChatResponse | null>;
   itinerary: Stop[];
   candidates: PlaceCandidate[];
   proposal: Proposal | null;
@@ -47,6 +49,7 @@ function readDom(): StepSnapshot['dom'] {
     placesCard: document.querySelector('.places-card') !== null,
     proposalCard: document.querySelector('.proposal-card') !== null,
     suggestionChips: document.querySelectorAll('.quick-prompts button').length,
+    userMessages: document.querySelectorAll('.user-message').length,
     lastAssistantText: assistant.at(-1)?.textContent || '',
   };
 }
@@ -56,7 +59,7 @@ function emptyResults(selected: Scenario[]): ScenarioResult[] {
     id: scenario.id,
     sessions: scenario.sessions.map((session) => ({
       title: session.title,
-      steps: session.steps.map((step) => ({ say: step.say, status: 'pending', failed: [] })),
+      steps: session.steps.map((step) => ({ say: step.start ? '(apertura automatica della pagina)' : step.say, status: 'pending', failed: [] })),
     })),
   }));
 }
@@ -96,17 +99,17 @@ function statusGlyph(status: StepResult['status']) {
  * state and DOM after every turn. Sessions inside a scenario restart the chat
  * but keep the profile, so memory across visits is tested too.
  */
-export function TestPanel({ ask, itinerary, candidates, proposal, suggestions, profile, setProfile, reset, onClose }: Props) {
+export function TestPanel({ ask, start, itinerary, candidates, proposal, suggestions, profile, setProfile, reset, onClose }: Props) {
   const [selected, setSelected] = useState<string[]>(scenarios.map((scenario) => scenario.id));
   const [results, setResults] = useState<ScenarioResult[]>([]);
   const [running, setRunning] = useState(false);
   const [copied, setCopied] = useState(false);
-  const latest = useRef({ ask, itinerary, candidates, proposal, suggestions, profile });
+  const latest = useRef({ ask, start, itinerary, candidates, proposal, suggestions, profile });
   const cancelled = useRef(false);
 
   useEffect(() => {
-    latest.current = { ask, itinerary, candidates, proposal, suggestions, profile };
-  }, [ask, itinerary, candidates, proposal, suggestions, profile]);
+    latest.current = { ask, start, itinerary, candidates, proposal, suggestions, profile };
+  }, [ask, start, itinerary, candidates, proposal, suggestions, profile]);
 
   const updateStep = useCallback((scenarioIndex: number, sessionIndex: number, stepIndex: number, patch: Partial<StepResult>) => {
     setResults((current) => current.map((scenario, sIndex) => (sIndex !== scenarioIndex ? scenario : {
@@ -120,7 +123,7 @@ export function TestPanel({ ask, itinerary, candidates, proposal, suggestions, p
 
   async function runStep(step: Step, previous: StepSnapshot | null): Promise<{ snapshot: StepSnapshot; failed: string[] }> {
     const started = performance.now();
-    const response = await latest.current.ask(step.say);
+    const response = step.start ? await latest.current.start() : await latest.current.ask(step.say);
     await settle();
     const { itinerary: stops, candidates: shown, proposal: proposed, suggestions: replies, profile: current } = latest.current;
     const snapshot: StepSnapshot = {

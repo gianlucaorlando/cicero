@@ -97,7 +97,7 @@ export function ConversationPanel({
       </div>
 
       <div className="messages" aria-live="polite">
-        {messages.map((message) => (
+        {messages.filter((message) => !message.hidden).map((message) => (
           <article className={`message ${message.role === 'user' ? 'user-message' : 'assistant-message'}`} key={message.id}>
             {message.role === 'assistant' && <span className="assistant-avatar"><Sparkles /></span>}
             <div className="message-content">

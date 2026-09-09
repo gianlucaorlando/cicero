@@ -80,6 +80,8 @@ export type ChatMessage = {
   role: ChatRole;
   text: string;
   meta?: string;
+  /** App-generated event (opening, relocation): sent to the model as a user turn but never rendered. */
+  hidden?: boolean;
 };
 
 /** What the client sends to the agent on every turn. */

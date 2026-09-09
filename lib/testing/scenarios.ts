@@ -17,6 +17,7 @@ export type StepSnapshot = {
     placesCard: boolean;
     proposalCard: boolean;
     suggestionChips: number;
+    userMessages: number;
     lastAssistantText: string;
   };
   durationMs: number;
@@ -27,7 +28,8 @@ export type Check = {
   pass: (snapshot: StepSnapshot, previous: StepSnapshot | null) => boolean;
 };
 
-export type Step = { say: string; checks: Check[] };
+/** A step either says something as the user, or (with `start`) triggers Cicero's automatic opening move. */
+export type Step = { say: string; start?: boolean; checks: Check[] };
 
 /**
  * A session is one chat from the opening message. Between the sessions of a
@@ -82,6 +84,11 @@ const proposalOrQuestion: Check = {
 const noProposal: Check = {
   label: 'Nessuna proposta o lista residua',
   pass: (s) => s.proposal === null && s.candidates.length === 0 && !s.dom.proposalCard && !s.dom.placesCard && s.dom.candidateMarkers === 0,
+};
+
+const noVisibleUserMessage: Check = {
+  label: 'L\'evento di apertura non compare come messaggio dell\'utente',
+  pass: (s) => s.dom.userMessages === 0,
 };
 
 const noList: Check = {
@@ -192,6 +199,22 @@ const single = (title: string, steps: Step[]): Session[] => [{ title, steps }];
 const base = [replied, within(60_000), offersReplies];
 
 export const scenarios: Scenario[] = [
+  {
+    id: 'opening-move',
+    title: 'Apertura: Cicero parla per primo',
+    description: 'Appena la pagina si apre, senza che l\'utente scriva, arriva una proposta motivata con le risposte rapide.',
+    sessions: single('Arrivo in città', [
+      {
+        say: '',
+        start: true,
+        checks: [...base, proposalShown, noVisibleUserMessage, stopsEqual(0), noList, guiMatchesState],
+      },
+      {
+        say: 'Sì, partiamo da lì.',
+        checks: [...base, acceptedProposal, guiMatchesState],
+      },
+    ]),
+  },
   {
     id: 'propose-first',
     title: 'Cicero propone, io dico sì',

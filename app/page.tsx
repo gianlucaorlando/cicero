@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, type SubmitEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type SubmitEvent } from 'react';
 
 import { ConversationPanel } from '@/components/cicero/conversation-panel';
 import { LocationSheet } from '@/components/cicero/location-sheet';
@@ -10,8 +10,8 @@ import { RouteDetailSheet } from '@/components/cicero/route-detail-sheet';
 import { SavedRoutesSheet } from '@/components/cicero/saved-routes-sheet';
 import { TestPanel } from '@/components/cicero/test-panel';
 import { useAuth0 } from '@/hooks/use-auth0';
-import { useConversation, type ChatMode } from '@/hooks/use-conversation';
-import { useLocation } from '@/hooks/use-location';
+import { relocationEvent, useConversation, type ChatMode, type TurnContext } from '@/hooks/use-conversation';
+import { useLocation, type Relocation } from '@/hooks/use-location';
 import { useProfileSync } from '@/hooks/use-profile-sync';
 import { useSavedRoutes } from '@/hooks/use-saved-routes';
 import { useSpeechInput } from '@/hooks/use-speech-input';
@@ -39,7 +39,10 @@ export default function Home() {
   const auth = useAuth0();
   const profileSync = useProfileSync({ authStatus: auth.status, getAccessToken: auth.getAccessToken });
   const conversation = useConversation(profileSync.applyPatch);
-  const location = useLocation(conversation.notify);
+  // The relocation handler needs location state that does not exist yet at this point: route it through a ref.
+  const relocateRef = useRef<(relocation: Relocation) => void>(() => undefined);
+  const onRelocated = useCallback((relocation: Relocation) => relocateRef.current(relocation), []);
+  const location = useLocation({ notify: conversation.notify, onRelocated });
   const weather = useWeather(location.coords);
   const savedRoutes = useSavedRoutes({ authStatus: auth.status, getAccessToken: auth.getAccessToken });
 
@@ -83,14 +86,44 @@ export default function Home() {
   const visibleCandidates = proposal && !alternativesOpen ? candidates.slice(0, 1) : candidates;
   const { city, locationLabel, coords } = location;
 
-  const ask = useCallback((text: string) => conversation.send(text, {
+  const buildContext = useCallback((overrides: Partial<TurnContext> = {}): TurnContext => ({
     city,
     locationLabel,
     origin: coords,
     weather,
     localTime: localTimeLabel(),
     profile,
-  }), [city, conversation, coords, locationLabel, profile, weather]);
+    ...overrides,
+  }), [city, coords, locationLabel, profile, weather]);
+
+  const ask = useCallback((text: string) => conversation.send(text, buildContext()), [buildContext, conversation]);
+
+  // Cicero stays proactive: a moved origin triggers a hidden event and a fresh proposal nearby.
+  useEffect(() => {
+    relocateRef.current = (relocation) => {
+      void conversation.send(
+        relocationEvent(relocation.label, relocation.city),
+        buildContext({ city: relocation.city, locationLabel: relocation.label, origin: relocation.coords }),
+        { hidden: true },
+      );
+    };
+  }, [buildContext, conversation]);
+
+  // Opening move: as soon as profile and weather are known (or 2.5 s have passed), Cicero proposes without being asked.
+  const kickedOff = useRef(false);
+  const [weatherDeadline, setWeatherDeadline] = useState(false);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setWeatherDeadline(true), 2500);
+    return () => window.clearTimeout(timeout);
+  }, []);
+  const weatherReady = weather !== 'meteo in arrivo' || weatherDeadline;
+  useEffect(() => {
+    if (kickedOff.current || !profileSync.ready || !weatherReady) return;
+    // The test panel drives the conversation itself, including the opening move.
+    if (new URLSearchParams(window.location.search).get('test') === '1') return;
+    kickedOff.current = true;
+    void conversation.start(buildContext());
+  }, [buildContext, conversation, profileSync.ready, weatherReady]);
 
   const currentSignature = itinerarySignature(city, locationLabel, coords, itinerary);
   const currentRouteSaved = Boolean(itinerary.length && savedRoutes.savedSignature === currentSignature);
@@ -295,6 +328,7 @@ export default function Home() {
       {testPanelOpen && (
         <TestPanel
           ask={ask}
+          start={() => conversation.start(buildContext())}
           itinerary={itinerary}
           candidates={candidates}
           proposal={proposal}
