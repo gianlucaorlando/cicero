@@ -1,48 +1,57 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /** Minimal D1 stand-in: enough SQL to exercise the upsert-and-count contract. */
-class FakeD1 {
-  rows = new Map<string, { window_start: number; count: number }>();
-  failNext = false;
-  statements: string[] = [];
+function createFakeD1() {
+  const rows = new Map<string, { window_start: number; count: number }>();
+  const statements: string[] = [];
+  let failNext = false;
+  const guard = () => {
+    if (failNext) throw new Error('D1 unavailable');
+  };
 
-  prepare(sql: string) {
-    this.statements.push(sql);
-    const db = this;
-    let args: unknown[] = [];
-    return {
-      bind(...values: unknown[]) {
-        args = values;
-        return this;
-      },
-      async first<T>(): Promise<T | null> {
-        if (db.failNext) throw new Error('D1 unavailable');
-        const [bucket, windowStart] = args as [string, number];
-        const current = db.rows.get(bucket);
-        const next = current && current.window_start === windowStart
-          ? { window_start: windowStart, count: current.count + 1 }
-          : { window_start: windowStart, count: 1 };
-        db.rows.set(bucket, next);
-        return { count: next.count } as T;
-      },
-      async run() {
-        if (db.failNext) throw new Error('D1 unavailable');
-        if (sql.startsWith('DELETE')) {
-          const [threshold] = args as [number];
-          for (const [bucket, row] of db.rows) if (row.window_start < threshold) db.rows.delete(bucket);
-        }
-        return { success: true };
-      },
-    };
-  }
-
-  async batch(statements: Array<{ run: () => Promise<unknown> }>) {
-    if (this.failNext) throw new Error('D1 unavailable');
-    return Promise.all(statements.map((statement) => statement.run()));
-  }
+  return {
+    rows,
+    statements,
+    setFailNext(value: boolean) {
+      failNext = value;
+    },
+    prepare(sql: string) {
+      statements.push(sql);
+      let args: unknown[] = [];
+      const statement = {
+        bind(...values: unknown[]) {
+          args = values;
+          return statement;
+        },
+        async first<T>(): Promise<T | null> {
+          guard();
+          const [bucket, windowStart] = args as [string, number];
+          const current = rows.get(bucket);
+          const next = current && current.window_start === windowStart
+            ? { window_start: windowStart, count: current.count + 1 }
+            : { window_start: windowStart, count: 1 };
+          rows.set(bucket, next);
+          return { count: next.count } as T;
+        },
+        async run() {
+          guard();
+          if (sql.startsWith('DELETE')) {
+            const [threshold] = args as [number];
+            for (const [bucket, row] of rows) if (row.window_start < threshold) rows.delete(bucket);
+          }
+          return { success: true };
+        },
+      };
+      return statement;
+    },
+    async batch(prepared: Array<{ run: () => Promise<unknown> }>) {
+      guard();
+      return Promise.all(prepared.map((item) => item.run()));
+    },
+  };
 }
 
-const db = new FakeD1();
+const db = createFakeD1();
 vi.mock('@/db', () => ({ getD1: () => db }));
 
 import { chatRateLimitRules, clientKey, enforceRateLimits } from '@/lib/server/rate-limit';
@@ -51,8 +60,8 @@ const rule = (limit: number, windowMs = 60_000) => [{ key: 'ip-1', limit, window
 
 beforeEach(() => {
   db.rows.clear();
-  db.statements = [];
-  db.failNext = false;
+  db.statements.length = 0;
+  db.setFailNext(false);
   vi.unstubAllEnvs();
 });
 
@@ -98,7 +107,7 @@ describe('enforceRateLimits', () => {
   });
 
   it('keeps counting in memory when D1 is unreachable, instead of letting everything through', async () => {
-    db.failNext = true;
+    db.setFailNext(true);
     const rules = rule(1);
     expect((await enforceRateLimits(rules, 5000)).allowed).toBe(true);
     expect((await enforceRateLimits(rules, 5000)).allowed).toBe(false);
