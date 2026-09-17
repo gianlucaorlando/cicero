@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, ChevronDown, ChevronUp, ExternalLink, LocateFixed, RefreshCw } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, ChevronUp, ExternalLink, LocateFixed, RefreshCw } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,10 +15,11 @@ type Props = {
   onDecline: () => void;
   alternativesOpen: boolean;
   onToggleAlternatives: () => void;
+  onOpenDetails: () => void;
 };
 
 /** A single suggestion the user can accept or refuse with one tap. */
-export function ProposalCard({ proposal, disabled, onAccept, onDecline, alternativesOpen, onToggleAlternatives }: Props) {
+export function ProposalCard({ proposal, disabled, onAccept, onDecline, alternativesOpen, onToggleAlternatives, onOpenDetails }: Props) {
   const { candidate, reason, alternatives } = proposal;
 
   return (
@@ -27,13 +28,18 @@ export function ProposalCard({ proposal, disabled, onAccept, onDecline, alternat
         <span>Ti propongo</span>
         <Badge variant="outline">verificato</Badge>
       </div>
-      <strong className="proposal-name">{candidate.name}</strong>
-      <small className="proposal-facts">
-        {humanDistance(candidate.distanceMeters)} · {candidate.address}
-        {candidate.rating != null && candidate.userRatingCount != null && (
-          <> · ★ {formatRating(candidate.rating)} ({humanReviewCount(candidate.userRatingCount)})</>
-        )}
-      </small>
+      <button className="proposal-open" type="button" onClick={onOpenDetails} aria-label={`Vedi la scheda di ${candidate.name}`}>
+        <span>
+          <strong className="proposal-name">{candidate.name}</strong>
+          <small className="proposal-facts">
+            {humanDistance(candidate.distanceMeters)} · {candidate.address}
+            {candidate.rating != null && candidate.userRatingCount != null && (
+              <> · ★ {formatRating(candidate.rating)} ({humanReviewCount(candidate.userRatingCount)})</>
+            )}
+          </small>
+        </span>
+        <ChevronRight aria-hidden="true" />
+      </button>
       {reason && <p className="proposal-reason">{reason}</p>}
 
       <div className="proposal-actions">

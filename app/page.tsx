@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState, type SubmitEvent } from 'reac
 import { ConversationPanel } from '@/components/cicero/conversation-panel';
 import { LocationSheet } from '@/components/cicero/location-sheet';
 import { MapStage } from '@/components/cicero/map-stage';
+import { PlaceSheet } from '@/components/cicero/place-sheet';
 import { ProfileSheet, type ManualPreferenceKey } from '@/components/cicero/profile-sheet';
 import { RouteDetailSheet } from '@/components/cicero/route-detail-sheet';
 import { SavedRoutesSheet } from '@/components/cicero/saved-routes-sheet';
@@ -56,6 +57,8 @@ export default function Home() {
   const [testPanelOpen, setTestPanelOpen] = useState(false);
   /** Id of the proposal whose alternatives are expanded; a new proposal collapses them again. */
   const [alternativesOpenFor, setAlternativesOpenFor] = useState<string | null>(null);
+  /** Place whose detail sheet is open, opened by tapping the proposal. */
+  const [detailPlace, setDetailPlace] = useState<PlaceCandidate | null>(null);
 
   const speech = useSpeechInput(useCallback((transcript: string) => setInput(transcript), []));
 
@@ -166,10 +169,12 @@ export default function Home() {
   }
 
   function acceptProposal() {
+    setDetailPlace(null);
     if (proposal) void ask('Sì, aggiungila.');
   }
 
   function declineProposal() {
+    setDetailPlace(null);
     if (proposal) void ask('No, proponimi un’altra.');
   }
 
@@ -272,6 +277,7 @@ export default function Home() {
         onDeclineProposal={declineProposal}
         alternativesOpen={alternativesOpen}
         onToggleAlternatives={toggleAlternatives}
+        onOpenPlace={setDetailPlace}
         candidates={candidates}
         onSelectCandidate={selectCandidate}
         itinerary={itinerary}
@@ -283,6 +289,16 @@ export default function Home() {
         onSubmit={submitMessage}
         speech={speech}
         footerNote={footerNotes[conversation.mode]}
+      />
+
+      <PlaceSheet
+        place={detailPlace}
+        reason={detailPlace && proposal && detailPlace.id === proposal.candidate.id ? proposal.reason : undefined}
+        actions={detailPlace && proposal && detailPlace.id === proposal.candidate.id
+          ? { onAccept: acceptProposal, onDecline: declineProposal }
+          : undefined}
+        busy={conversation.thinking}
+        onOpenChange={(open) => { if (!open) setDetailPlace(null); }}
       />
 
       <RouteDetailSheet

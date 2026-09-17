@@ -24,6 +24,7 @@ type Props = {
   onDeclineProposal: () => void;
   alternativesOpen: boolean;
   onToggleAlternatives: () => void;
+  onOpenPlace: (place: PlaceCandidate) => void;
   candidates: PlaceCandidate[];
   onSelectCandidate: (candidate: PlaceCandidate) => void;
   itinerary: Stop[];
@@ -62,6 +63,7 @@ export function ConversationPanel({
   onDeclineProposal,
   alternativesOpen,
   onToggleAlternatives,
+  onOpenPlace,
   candidates,
   onSelectCandidate,
   itinerary,
@@ -118,6 +120,7 @@ export function ConversationPanel({
               onDecline={onDeclineProposal}
               alternativesOpen={alternativesOpen}
               onToggleAlternatives={onToggleAlternatives}
+              onOpenDetails={() => onOpenPlace(proposal.candidate)}
             />
             {alternativesOpen && proposal.alternatives.length > 0 && (
               <PlacesCard candidates={proposal.alternatives} disabled={thinking} onSelect={onSelectCandidate} letterOffset={1} title="Le altre opzioni" />
