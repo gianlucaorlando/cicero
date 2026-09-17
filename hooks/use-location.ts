@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 import { geocode, reverseGeocode } from '@/lib/api';
 import type { LatLng, SavedRoute } from '@/lib/types';
@@ -27,6 +27,8 @@ export function useLocation({ notify, onRelocated }: Params) {
   const [locationLabel, setLocationLabel] = useState(DEFAULT_LABEL);
   const [coords, setCoords] = useState<LatLng>(DEFAULT_COORDS);
   const [locating, setLocating] = useState(false);
+  /** Only the newest geocode answer may write: a slower earlier one would undo it. */
+  const request = useRef(0);
 
   const useCurrentLocation = useCallback(() => {
     if (!navigator.geolocation) {
@@ -36,6 +38,7 @@ export function useLocation({ notify, onRelocated }: Params) {
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        request.current += 1;
         const next = { lat: position.coords.latitude, lng: position.coords.longitude };
         setCoords(next);
         setCity('Qui vicino');
@@ -54,10 +57,12 @@ export function useLocation({ notify, onRelocated }: Params) {
   const findLocation = useCallback(async (query: string) => {
     const trimmed = query.trim();
     if (!trimmed) return false;
+    const ticket = ++request.current;
     setLocating(true);
     try {
       const result = await geocode(trimmed);
       if (!result) throw new Error('not found');
+      if (ticket !== request.current) return false;
       const nextCity = result.city || city;
       setCoords(result.coords);
       setCity(nextCity);
@@ -74,18 +79,23 @@ export function useLocation({ notify, onRelocated }: Params) {
   }, [city, notify, onRelocated]);
 
   const movePin = useCallback(async (next: LatLng) => {
+    const ticket = ++request.current;
     setCoords(next);
     setLocationLabel('pin spostato');
     let label = 'il punto scelto sulla mappa';
     let nextCity = city;
     try {
       const result = await reverseGeocode(next);
+      if (ticket !== request.current) return;
       label = result.label;
       nextCity = result.city || city;
       setLocationLabel(result.label);
       setAddressInput(result.label);
       if (result.city) setCity(result.city);
-    } catch { /* the pin still moved; the address is simply unknown */ }
+    } catch {
+      // The pin still moved; the address is simply unknown.
+      if (ticket !== request.current) return;
+    }
     onRelocated({ coords: next, label, city: nextCity });
   }, [city, onRelocated]);
 

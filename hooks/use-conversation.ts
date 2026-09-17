@@ -115,7 +115,7 @@ export function useConversation(onProfilePatch: (patch: ProfilePatch) => void) {
   }, []);
 
   const replaceItinerary = useCallback((stops: Stop[]) => {
-    setPlan((current) => ({ ...current, itinerary: stops, candidates: [], proposal: null }));
+    setPlan((current) => ({ ...current, itinerary: stops, candidates: [], listed: false, proposal: null }));
   }, []);
 
   /** Back to the opening state: used by the hidden test panel between scenarios. */
@@ -130,6 +130,7 @@ export function useConversation(onProfilePatch: (patch: ProfilePatch) => void) {
     messages,
     itinerary: plan.itinerary,
     candidates: plan.candidates,
+    listed: plan.listed,
     proposal: plan.proposal,
     suggestions: plan.suggestions,
     thinking,

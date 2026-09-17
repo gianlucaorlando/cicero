@@ -12,9 +12,16 @@ type Headers = AuthHeaders;
 
 async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(url, { cache: 'no-store', ...init });
-  const data = await response.json().catch(() => ({})) as { error?: string; message?: string } & T;
-  if (!response.ok) throw new ApiError(response.status, data.error || `HTTP_${response.status}`, data.message);
-  return data;
+  let data: ({ error?: string; message?: string } & T) | null = null;
+  try {
+    data = await response.json() as { error?: string; message?: string } & T;
+  } catch {
+    // A 200 that is not JSON means something answered in the server's place (an offline
+    // fallback, a captive portal). Treating it as an empty payload would overwrite real data.
+    if (response.ok) throw new ApiError(502, 'INVALID_RESPONSE', 'Risposta non valida dal server.');
+  }
+  if (!response.ok) throw new ApiError(response.status, data?.error || `HTTP_${response.status}`, data?.message);
+  return data as T;
 }
 
 function jsonInit(method: string, body: unknown, headers: Headers = {}, signal?: AbortSignal): RequestInit {

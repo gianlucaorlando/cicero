@@ -119,6 +119,26 @@ describe('runAgent', () => {
     expect(response.actions.map((a) => a.type)).toEqual(['propose', 'suggest_replies']);
   });
 
+  it('keeps the loop going when a tool in the closing batch failed', async () => {
+    create
+      .mockResolvedValueOnce({
+        stop_reason: 'tool_use',
+        content: [
+          text('Ti propongo il museo, ti va?'),
+          // Nothing was searched, so proposing fails: the reply above describes something that does not exist.
+          toolUse('t1', 'propose_stop', { place: 'place-ghost', reason: 'x' }),
+          toolUse('t2', 'suggest_replies', { replies: ['Sì, aggiungila', 'Un’altra'] }),
+        ],
+      })
+      .mockResolvedValueOnce({ stop_reason: 'end_turn', content: [text('Scusa, non ho trovato nulla qui vicino.')] });
+
+    const response = await runAgent(request());
+    // The failed tool sends the model back for another try instead of shipping the wrong text.
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(response.reply).toBe('Scusa, non ho trovato nulla qui vicino.');
+    expect(response.actions.some((a) => a.type === 'propose')).toBe(false);
+  });
+
   it('returns a polite refusal text on a refusal stop', async () => {
     create.mockResolvedValueOnce({ stop_reason: 'refusal', content: [] });
     const response = await runAgent(request());

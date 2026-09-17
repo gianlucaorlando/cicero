@@ -36,6 +36,32 @@ describe('applyActions', () => {
     expect(next.itinerary.map((s) => s.id)).toEqual(['a', 'b']);
   });
 
+  it('a search is remembered without being shown', () => {
+    const next = applyActions(emptyPlan, [{ type: 'set_candidates', candidates: [candidate('a'), candidate('b')] }]);
+    expect(next.candidates.map((c) => c.id)).toEqual(['a', 'b']);
+    expect(next.listed).toBe(false);
+    expect(next.proposal).toBeNull();
+  });
+
+  it('only show_candidates puts the list on screen', () => {
+    const known = applyActions(emptyPlan, [{ type: 'set_candidates', candidates: [candidate('a')] }]);
+    expect(known.listed).toBe(false);
+    const shown = applyActions(known, [{ type: 'show_candidates', candidates: [candidate('a')] }]);
+    expect(shown.listed).toBe(true);
+    // Proposing again hides the list and leaves one place on the table.
+    const proposed = applyActions(shown, [{ type: 'propose', proposal: { candidate: candidate('a'), reason: '', alternatives: [] } }]);
+    expect(proposed.listed).toBe(false);
+  });
+
+  it('a new search replaces stale results and drops the standing proposal', () => {
+    const proposed = applyActions(emptyPlan, [
+      { type: 'propose', proposal: { candidate: candidate('old'), reason: '', alternatives: [candidate('old2')] } },
+    ]);
+    const searched = applyActions(proposed, [{ type: 'set_candidates', candidates: [candidate('new')] }]);
+    expect(searched.candidates.map((c) => c.id)).toEqual(['new']);
+    expect(searched.proposal).toBeNull();
+  });
+
   it('a list replaces a proposal, and a dismissal clears both', () => {
     const listed = applyActions({ ...emptyPlan, proposal: { candidate: candidate('a'), reason: '', alternatives: [] } }, [
       { type: 'show_candidates', candidates: [candidate('x'), candidate('y')] },

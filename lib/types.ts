@@ -122,6 +122,7 @@ export type Proposal = {
 
 /** Side effects the agent asks the client to apply after a turn. */
 export type ChatAction =
+  | { type: 'set_candidates'; candidates: PlaceCandidate[] }
   | { type: 'show_candidates'; candidates: PlaceCandidate[] }
   | { type: 'propose'; proposal: Proposal }
   | { type: 'dismiss_proposal' }

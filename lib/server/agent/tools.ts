@@ -213,8 +213,16 @@ function describeDetails(place: PlaceDetails) {
   return parts.filter(Boolean).join(' · ');
 }
 
-function stopTime(localTime: string, index: number) {
-  return shiftTime(localTime, FIRST_STOP_OFFSET_MINUTES + index * MINUTES_PER_STOP);
+/**
+ * When the plan is empty the first stop sits a little after now; otherwise it
+ * follows the last stop already scheduled, so removing or shifting stops never
+ * produces two at the same time or one that goes backwards.
+ */
+function nextStopTime(localTime: string, itinerary: Stop[]) {
+  const last = itinerary.at(-1);
+  return last?.time
+    ? shiftTime(last.time, MINUTES_PER_STOP)
+    : shiftTime(localTime, FIRST_STOP_OFFSET_MINUTES);
 }
 
 function failure(error: unknown): ToolOutcome {
@@ -314,7 +322,10 @@ export class AgentSession {
       });
       const fresh = candidates.filter((candidate) => !this.itinerary.some((stop) => stop.placeId === candidate.id));
       this.candidates = fresh;
-      this.actions = this.actions.filter((action) => action.type !== 'show_candidates' && action.type !== 'propose');
+      // The client mirrors the results even though nothing is shown yet: next turn the letters
+      // it sends back must be these, not the ones from a previous search.
+      this.actions = this.actions.filter((action) => !['set_candidates', 'show_candidates', 'propose'].includes(action.type));
+      this.actions.push({ type: 'set_candidates', candidates: fresh });
 
       if (!fresh.length) {
         return { content: input.open_now === false ? 'Nessun luogo adatto trovato nel raggio indicato.' : 'Nessun luogo aperto adesso trovato nel raggio indicato. Puoi riprovare con open_now false o un raggio più ampio.' };
@@ -363,7 +374,7 @@ export class AgentSession {
       const stop: Stop = {
         id: place.id,
         placeId: place.id,
-        time: stopTime(this.context.localTime, this.itinerary.length),
+        time: nextStopTime(this.context.localTime, this.itinerary),
         title: place.name,
         detail: [humanDistance(distanceMeters(previous, place)), open, priceLabel(place.priceLevel), rating].filter(Boolean).join(' · '),
         kind: place.primaryType === 'cafe' || place.primaryType === 'coffee_shop' ? 'coffee' : 'place',
@@ -383,7 +394,7 @@ export class AgentSession {
     if (added.length) {
       this.candidates = [];
       // Whatever was proposed or listed earlier in this turn is consumed by the choice.
-      this.actions = this.actions.filter((action) => action.type !== 'show_candidates' && action.type !== 'propose');
+      this.actions = this.actions.filter((action) => !['set_candidates', 'show_candidates', 'propose'].includes(action.type));
       this.actions.push({ type: 'add_stops', stops: added });
     }
     return { content: notes.join('\n'), isError: !added.length };
@@ -399,21 +410,21 @@ export class AgentSession {
     const alternatives = this.candidates.filter((item) => item.id !== candidate.id);
     // Keep the proposal first so letters in the context stay aligned with what the user sees.
     this.candidates = [candidate, ...alternatives];
-    this.actions = this.actions.filter((action) => action.type !== 'show_candidates' && action.type !== 'propose');
+    this.actions = this.actions.filter((action) => !['set_candidates', 'show_candidates', 'propose'].includes(action.type));
     this.actions.push({ type: 'propose', proposal: { candidate, reason, alternatives: alternatives.slice(0, 5) } });
     return { content: `Proposta mostrata: ${describeCandidate(candidate, 0)}. Alternative disponibili: ${alternatives.length}.` };
   }
 
   private dismissProposal(): ToolOutcome {
     this.candidates = [];
-    this.actions = this.actions.filter((action) => action.type !== 'show_candidates' && action.type !== 'propose');
+    this.actions = this.actions.filter((action) => !['set_candidates', 'show_candidates', 'propose'].includes(action.type));
     this.actions.push({ type: 'dismiss_proposal' });
     return { content: 'Proposta ritirata, nessun risultato in vista.' };
   }
 
   private showOptions(): ToolOutcome {
     if (!this.candidates.length) return { isError: true, content: 'Non ci sono risultati da mostrare: fai prima una ricerca.' };
-    this.actions = this.actions.filter((action) => action.type !== 'show_candidates' && action.type !== 'propose');
+    this.actions = this.actions.filter((action) => !['set_candidates', 'show_candidates', 'propose'].includes(action.type));
     this.actions.push({ type: 'show_candidates', candidates: this.candidates });
     return { content: `Lista mostrata all'utente:\n${this.candidates.map(describeCandidate).join('\n')}` };
   }

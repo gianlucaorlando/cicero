@@ -28,7 +28,8 @@ type Props = {
   proposal: Proposal | null;
   suggestions: string[];
   profile: Profile;
-  setProfile: (profile: Profile) => void;
+  /** Sets the run's throwaway profile; null hands the app back its real, synced one. */
+  setProfile: (profile: Profile | null) => void;
   reset: () => void;
   onClose: () => void;
 };
@@ -149,7 +150,6 @@ export function TestPanel({ ask, start, itinerary, candidates, proposal, suggest
     setRunning(true);
     setCopied(false);
     setResults(emptyResults(chosen));
-    const savedProfile = latest.current.profile;
 
     try {
       for (const [scenarioIndex, scenario] of chosen.entries()) {
@@ -182,7 +182,8 @@ export function TestPanel({ ask, start, itinerary, candidates, proposal, suggest
       }
     } finally {
       reset();
-      setProfile(savedProfile);
+      // Back to the real profile: the run never wrote to it, so nothing to restore.
+      setProfile(null);
       setRunning(false);
     }
   }

@@ -111,11 +111,20 @@ const stopsGrewBy = (count: number): Check => ({
   pass: (s, previous) => s.itinerary.length === (previous?.itinerary.length ?? 0) + count,
 });
 
-const stopsRemoved = (count: number): Check => ({
-  label: `${count} ${count === 1 ? 'tappa rimossa' : 'tappe rimosse'}, le altre intatte`,
+/**
+ * Checks which stops went, not just how many: counting alone passes when the
+ * model removes the third stop after being asked for the second.
+ */
+const removedAt = (...positions: number[]): Check => ({
+  label: `Rimosse esattamente le tappe in posizione ${positions.map((index) => index + 1).join(' e ')}`,
   pass: (s, previous) => {
-    if (!previous || s.itinerary.length !== previous.itinerary.length - count) return false;
-    return s.itinerary.every((stop) => previous.itinerary.some((old) => old.id === stop.id));
+    if (!previous) return false;
+    const gone = positions.map((index) => previous.itinerary[index]?.id).filter(Boolean);
+    if (gone.length !== positions.length) return false;
+    const survivors = previous.itinerary.filter((stop) => !gone.includes(stop.id)).map((stop) => stop.id);
+    return gone.every((id) => !s.itinerary.some((stop) => stop.id === id))
+      && survivors.every((id) => s.itinerary.some((stop) => stop.id === id))
+      && s.itinerary.length === survivors.length;
   },
 });
 
@@ -377,7 +386,7 @@ export const scenarios: Scenario[] = [
           },
           {
             say: 'Togli la seconda tappa, non ho tempo per tutto.',
-            checks: [...base, stopsRemoved(1), guiMatchesState],
+            checks: [...base, removedAt(1), guiMatchesState],
           },
           {
             say: 'Sposta tutto di mezz’ora più tardi.',
@@ -482,8 +491,8 @@ export const scenarios: Scenario[] = [
         checks: [...base, stopsAtLeast(5), stopsUnchanged, guiMatchesState],
       },
       {
-        say: 'Sono troppe. Togli il secondo e il terzo monumento.',
-        checks: [...base, stopsRemoved(2), guiMatchesState],
+        say: 'Sono troppe. Togli la seconda e la terza tappa.',
+        checks: [...base, removedAt(1, 2), guiMatchesState],
       },
       {
         say: 'Però proponimi un monumento vicino al museo.',

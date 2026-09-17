@@ -53,7 +53,10 @@ describe('search → propose → accept', () => {
     const session = new AgentSession(context());
     const search = await session.execute('search_places', { query: 'caffè', near: 'origin', open_now: true });
     expect(search.isError).toBeUndefined();
-    expect(session.actions).toEqual([]);
+    // The client is told what was found, but nothing is put on screen yet.
+    expect(session.actions.map((a) => a.type)).toEqual(['set_candidates']);
+    const found = session.actions[0];
+    expect(found.type === 'set_candidates' && found.candidates.map((c) => c.id)).toEqual(['place-aaaa', 'place-bbbb', 'place-cccc']);
 
     const proposed = await session.execute('propose_stop', { place: 'A', reason: 'È a due passi.' });
     expect(proposed.isError).toBeUndefined();
@@ -135,6 +138,44 @@ describe('per-request spend ceilings', () => {
     for (let i = 0; i < 4; i += 1) await session.execute('search_places', { query: `q${i}`, near: 'origin', open_now: true });
     const replies = await session.execute('suggest_replies', { replies: ['Sì', 'No'] });
     expect(replies.isError).toBeFalsy();
+  });
+});
+
+describe('scheduling a new stop', () => {
+  it('puts the first stop shortly after the local time', async () => {
+    const session = new AgentSession(context({ localTime: '10:00' }));
+    await session.execute('search_places', { query: 'caffè', near: 'origin', open_now: true });
+    await session.execute('add_stops', { places: ['A'] });
+    const add = session.actions.find((a) => a.type === 'add_stops');
+    expect(add?.type === 'add_stops' && add.stops[0].time).toBe('10:15');
+  });
+
+  it('puts a later stop after the last one, not at local time plus a count', async () => {
+    // A plan whose times were shifted forward: scheduling from localTime would land before them.
+    const session = new AgentSession(context({
+      localTime: '10:00',
+      itinerary: [{ id: 's1', placeId: 'place-zzzz', time: '18:00', title: 'Cena', detail: '', kind: 'place', lat: 45.465, lng: 9.191 }],
+    }));
+    await session.execute('search_places', { query: 'caffè', near: 'origin', open_now: true });
+    await session.execute('add_stops', { places: ['A'] });
+    const add = session.actions.find((a) => a.type === 'add_stops');
+    expect(add?.type === 'add_stops' && add.stops[0].time).toBe('18:45');
+  });
+
+  it('keeps times ascending after a removal', async () => {
+    const session = new AgentSession(context({
+      localTime: '12:00',
+      itinerary: [
+        { id: 's1', placeId: 'place-yyyy', time: '12:15', title: 'A', detail: '', kind: 'place', lat: 45.465, lng: 9.191 },
+        { id: 's2', placeId: 'place-zzzz', time: '13:00', title: 'B', detail: '', kind: 'place', lat: 45.466, lng: 9.191 },
+      ],
+    }));
+    await session.execute('remove_stops', { stop_ids: ['s1'] });
+    await session.execute('search_places', { query: 'caffè', near: 'origin', open_now: true });
+    await session.execute('add_stops', { places: ['A'] });
+    const add = session.actions.find((a) => a.type === 'add_stops');
+    // B is still at 13:00, so the new stop must come after it rather than collide.
+    expect(add?.type === 'add_stops' && add.stops[0].time).toBe('13:45');
   });
 });
 

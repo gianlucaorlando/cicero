@@ -26,6 +26,8 @@ export function useSavedRoutes({ authStatus, getAccessToken }: Params) {
   const [saveStatus, setSaveStatus] = useState<'error' | 'idle' | 'saving'>('idle');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  /** City of the route currently open: once the trip moves elsewhere, saving must create a new one. */
+  const [activeCity, setActiveCity] = useState<string | null>(null);
   const [savedSignature, setSavedSignature] = useState<string | null>(null);
 
   const headers = useCallback(async (): Promise<AuthHeaders> => {
@@ -49,10 +51,13 @@ export function useSavedRoutes({ authStatus, getAccessToken }: Params) {
   const save = useCallback(async ({ signature, ...payload }: SaveRoutePayload) => {
     setSaveStatus('saving');
     try {
-      const data = await api.itineraries.save({ id: activeId, ...payload }, await headers());
+      // Overwriting the open route is right only while the user is still editing that same trip.
+      const updating = activeId && activeCity === payload.city ? activeId : null;
+      const data = await api.itineraries.save({ id: updating, ...payload }, await headers());
       const route = data.route;
       if (!route) throw new Error('route missing');
       setActiveId(route.id);
+      setActiveCity(route.city);
       setSavedSignature(signature);
       setRoutes((current) => [route, ...current.filter((item) => item.id !== route.id)]);
       setSaveStatus('idle');
@@ -61,7 +66,7 @@ export function useSavedRoutes({ authStatus, getAccessToken }: Params) {
       setSaveStatus('error');
       return null;
     }
-  }, [activeId, headers]);
+  }, [activeCity, activeId, headers]);
 
   const remove = useCallback(async (routeId: string) => {
     setDeletingId(routeId);
@@ -70,6 +75,7 @@ export function useSavedRoutes({ authStatus, getAccessToken }: Params) {
       setRoutes((current) => current.filter((route) => route.id !== routeId));
       if (activeId === routeId) {
         setActiveId(null);
+        setActiveCity(null);
         setSavedSignature(null);
       }
     } catch {
@@ -82,6 +88,7 @@ export function useSavedRoutes({ authStatus, getAccessToken }: Params) {
   /** Marks a stored route as the one currently open on the map. */
   const markActive = useCallback((route: SavedRoute, signature: string) => {
     setActiveId(route.id);
+    setActiveCity(route.city);
     setSavedSignature(signature);
     setSaveStatus('idle');
   }, []);

@@ -127,8 +127,11 @@ export async function runAgent(request: ChatRequest): Promise<ChatResponse> {
     messages.push({ role: 'user', content: results });
 
     // suggest_replies is the closing move of a turn: the user-facing text travels in the same
-    // message, so there is no need for another round trip just to say goodbye.
-    const closing = toolUses.some((toolUse) => toolUse.name === 'suggest_replies')
+    // message, so there is no need for another round trip just to say goodbye. A failed tool in
+    // the same batch keeps the loop going, or the reply would describe something that never happened.
+    const batchFailed = results.some((result) => result.is_error);
+    const closing = !batchFailed
+      && toolUses.some((toolUse) => toolUse.name === 'suggest_replies')
       && session.actions.some((action) => action.type === 'suggest_replies');
     if (closing && text) {
       reply = text;

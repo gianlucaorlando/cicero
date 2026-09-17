@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type SubmitEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type SubmitEvent } from 'react';
 
 import { ConversationPanel } from '@/components/cicero/conversation-panel';
 import { LocationSheet } from '@/components/cicero/location-sheet';
@@ -19,7 +19,7 @@ import { useSpeechInput } from '@/hooks/use-speech-input';
 import { useWeather } from '@/hooks/use-weather';
 import { candidateLetter, localTimeLabel, pluralStops } from '@/lib/format';
 import { itinerarySignature } from '@/lib/geo';
-import type { PreferenceCategory } from '@/lib/profile';
+import type { PreferenceCategory, Profile } from '@/lib/profile';
 import type { PlaceCandidate, SavedRoute } from '@/lib/types';
 
 function hideSplash() {
@@ -59,6 +59,8 @@ export default function Home() {
   const [alternativesOpenFor, setAlternativesOpenFor] = useState<string | null>(null);
   /** Place whose detail sheet is open, opened by tapping the proposal. */
   const [detailPlace, setDetailPlace] = useState<PlaceCandidate | null>(null);
+  /** While the test panel runs it works on this profile, so the real one is never written. */
+  const [testProfile, setTestProfile] = useState<Profile | null>(null);
 
   const speech = useSpeechInput(useCallback((transcript: string) => setInput(transcript), []));
 
@@ -82,11 +84,19 @@ export default function Home() {
       .catch(() => undefined);
   }, []);
 
-  const { profile } = profileSync;
-  const { itinerary, candidates, proposal, suggestions } = conversation;
+  const { profile: syncedProfile } = profileSync;
+  const profile = testProfile ?? syncedProfile;
+  const { itinerary, candidates, listed, proposal, suggestions } = conversation;
   const alternativesOpen = proposal !== null && alternativesOpenFor === proposal.candidate.id;
-  // With a proposal on the table the map shows only that pin, unless the user asked to see the alternatives.
-  const visibleCandidates = proposal && !alternativesOpen ? candidates.slice(0, 1) : candidates;
+  /**
+   * Pins on the map: only the proposed one while a proposal stands, all of them
+   * when the alternatives are open or the agent showed the list, none otherwise.
+   * Memoised because a new array identity re-centres the map on every keystroke.
+   */
+  const visibleCandidates = useMemo(() => {
+    if (proposal) return alternativesOpen ? candidates : candidates.slice(0, 1);
+    return listed ? candidates : [];
+  }, [alternativesOpen, candidates, listed, proposal]);
   const { city, locationLabel, coords } = location;
 
   const buildContext = useCallback((overrides: Partial<TurnContext> = {}): TurnContext => ({
@@ -122,7 +132,8 @@ export default function Home() {
   }, [profileSync.ready]);
 
   useEffect(() => {
-    if (!pendingEvent) return;
+    // A turn already in flight would reject the event: keep it queued until the reply lands.
+    if (!pendingEvent || conversation.thinking) return;
     const fire = () => {
       setPendingEvent(null);
       if (pendingEvent.kind === 'opening') {
@@ -138,7 +149,7 @@ export default function Home() {
     };
     const timeout = window.setTimeout(fire, weatherReady ? 0 : 2500);
     return () => window.clearTimeout(timeout);
-  }, [buildContext, conversation, pendingEvent, weatherReady]);
+  }, [buildContext, conversation, conversation.thinking, pendingEvent, weatherReady]);
 
   const currentSignature = itinerarySignature(city, locationLabel, coords, itinerary);
   const currentRouteSaved = Boolean(itinerary.length && savedRoutes.savedSignature === currentSignature);
@@ -279,6 +290,7 @@ export default function Home() {
         onToggleAlternatives={toggleAlternatives}
         onOpenPlace={setDetailPlace}
         candidates={candidates}
+        listed={listed}
         onSelectCandidate={selectCandidate}
         itinerary={itinerary}
         onRemoveStop={conversation.removeStop}
@@ -362,7 +374,7 @@ export default function Home() {
           proposal={proposal}
           suggestions={suggestions}
           profile={profile}
-          setProfile={profileSync.setProfile}
+          setProfile={setTestProfile}
           reset={conversation.reset}
           onClose={() => setTestPanelOpen(false)}
         />

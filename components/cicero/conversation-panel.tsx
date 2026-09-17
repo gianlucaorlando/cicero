@@ -26,6 +26,8 @@ type Props = {
   onToggleAlternatives: () => void;
   onOpenPlace: (place: PlaceCandidate) => void;
   candidates: PlaceCandidate[];
+  /** True only when the agent explicitly showed the full list. */
+  listed: boolean;
   onSelectCandidate: (candidate: PlaceCandidate) => void;
   itinerary: Stop[];
   onRemoveStop: (stopId: string) => void;
@@ -65,6 +67,7 @@ export function ConversationPanel({
   onToggleAlternatives,
   onOpenPlace,
   candidates,
+  listed,
   onSelectCandidate,
   itinerary,
   onRemoveStop,
@@ -80,7 +83,7 @@ export function ConversationPanel({
 
   useEffect(() => {
     messagesEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, [messages, thinking, proposal, candidates, alternativesOpen]);
+  }, [messages, thinking, proposal, candidates, listed, alternativesOpen]);
 
   return (
     <section className="conversation" aria-label="Conversazione con Cicero">
@@ -126,7 +129,7 @@ export function ConversationPanel({
               <PlacesCard candidates={proposal.alternatives} disabled={thinking} onSelect={onSelectCandidate} letterOffset={1} title="Le altre opzioni" />
             )}
           </>
-        ) : candidates.length > 0 && (
+        ) : listed && candidates.length > 0 && (
           <PlacesCard candidates={candidates} disabled={thinking} onSelect={onSelectCandidate} />
         )}
 
