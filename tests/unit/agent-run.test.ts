@@ -87,6 +87,38 @@ describe('runAgent', () => {
     expect(replies?.type === 'suggest_replies' && replies.replies[0]).toBe('Sì, aggiungila');
   });
 
+  it('honours at most five tool calls per response and reports the rest as errors', async () => {
+    const many = Array.from({ length: 7 }, (_, i) => toolUse(`t${i}`, 'suggest_replies', { replies: ['Sì', 'No'] }));
+    create
+      .mockResolvedValueOnce({ stop_reason: 'tool_use', content: many })
+      .mockResolvedValueOnce({ stop_reason: 'end_turn', content: [text('Ecco.')] });
+
+    await runAgent(request());
+    const sent = create.mock.calls[1][0].messages;
+    const results = sent.at(-1).content;
+    expect(results).toHaveLength(7);
+    expect(results.slice(0, 5).every((r: { is_error?: boolean }) => !r.is_error)).toBe(true);
+    expect(results.slice(5).every((r: { is_error?: boolean }) => r.is_error === true)).toBe(true);
+    expect(results[5].content).toMatch(/Troppi strumenti/);
+  });
+
+  it('runs the tools of one response in order, so a later tool sees the earlier one', async () => {
+    create
+      .mockResolvedValueOnce({
+        stop_reason: 'tool_use',
+        content: [
+          text('Ti propongo Bar Uno, ti va?'),
+          toolUse('t1', 'search_places', { query: 'caffè', near: 'origin', open_now: true }),
+          toolUse('t2', 'propose_stop', { place: 'A', reason: 'vicino' }),
+          toolUse('t3', 'suggest_replies', { replies: ['Sì, aggiungila', 'Un’altra'] }),
+        ],
+      });
+
+    const response = await runAgent(request());
+    // propose_stop can only succeed if search_places already populated the candidates.
+    expect(response.actions.map((a) => a.type)).toEqual(['propose', 'suggest_replies']);
+  });
+
   it('returns a polite refusal text on a refusal stop', async () => {
     create.mockResolvedValueOnce({ stop_reason: 'refusal', content: [] });
     const response = await runAgent(request());

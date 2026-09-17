@@ -102,6 +102,42 @@ describe('search → propose → accept', () => {
   });
 });
 
+describe('per-request spend ceilings', () => {
+  it('stops after three searches in one request', async () => {
+    const session = new AgentSession(context());
+    for (let i = 0; i < 3; i += 1) {
+      const ok = await session.execute('search_places', { query: `q${i}`, near: 'origin', open_now: true });
+      expect(ok.isError).toBeFalsy();
+    }
+    const blocked = await session.execute('search_places', { query: 'q4', near: 'origin', open_now: true });
+    expect(blocked.isError).toBe(true);
+    expect(blocked.content).toMatch(/3 ricerche/);
+    expect(searchPlaces).toHaveBeenCalledTimes(3);
+  });
+
+  it('stops after eight place verifications, counting add_stops and get_place_details together', async () => {
+    const session = new AgentSession(context());
+    await session.execute('search_places', { query: 'caffè', near: 'origin', open_now: true });
+    for (let i = 0; i < 8; i += 1) {
+      await session.execute('get_place_details', { place: 'place-aaaa' });
+    }
+    expect(getPlaceDetails).toHaveBeenCalledTimes(8);
+    const blockedDetails = await session.execute('get_place_details', { place: 'place-bbbb' });
+    expect(blockedDetails.isError).toBe(true);
+    const blockedAdd = await session.execute('add_stops', { places: ['B'] });
+    expect(blockedAdd.isError).toBe(true);
+    // No extra paid lookups once the ceiling is reached.
+    expect(getPlaceDetails).toHaveBeenCalledTimes(8);
+  });
+
+  it('free tools keep working after the paid ceiling is reached', async () => {
+    const session = new AgentSession(context());
+    for (let i = 0; i < 4; i += 1) await session.execute('search_places', { query: `q${i}`, near: 'origin', open_now: true });
+    const replies = await session.execute('suggest_replies', { replies: ['Sì', 'No'] });
+    expect(replies.isError).toBeFalsy();
+  });
+});
+
 describe('closing tools', () => {
   it('suggest_replies keeps only the last set and needs at least two replies', async () => {
     const session = new AgentSession(context());

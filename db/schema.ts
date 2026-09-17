@@ -24,6 +24,14 @@ export const placeReviewCache = sqliteTable('place_review_cache', {
   updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
+/** Shared spend counters: fixed windows, one row per bucket. See lib/server/rate-limit.ts. */
+export const rateLimits = sqliteTable('rate_limits', {
+  bucket: text('bucket').primaryKey(),
+  windowStart: integer('window_start').notNull(),
+  count: integer('count').notNull(),
+  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
 export const savedItineraries = sqliteTable('saved_itineraries', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull(),

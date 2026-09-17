@@ -6,15 +6,10 @@ import { getAgentConfig, runAgent } from '@/lib/server/agent/run';
 import { getRequestUser } from '@/lib/server/auth-user';
 import { errorResponse, json, readJson, textValue } from '@/lib/server/http';
 import { isValidPlaceId } from '@/lib/server/places';
-import { clientKey, rateLimit } from '@/lib/server/rate-limit';
+import { chatRateLimitRules, clientKey, enforceRateLimits } from '@/lib/server/rate-limit';
 import { normalizeStops } from '@/lib/server/stops';
 import type { ChatRequest, PlaceCandidate } from '@/lib/types';
 
-const RATE_LIMIT = {
-  requests: Math.max(1, Number(process.env.CICERO_RATE_LIMIT) || 60),
-  windowMs: 10 * 60 * 1000,
-  enabled: process.env.NODE_ENV === 'production' || process.env.CICERO_RATE_LIMIT !== undefined,
-};
 const MAX_MESSAGES = 40;
 const MAX_MESSAGE_LENGTH = 2000;
 
@@ -80,12 +75,15 @@ export async function POST(request: Request) {
   }
 
   const user = await getRequestUser(request);
-  const limit = RATE_LIMIT.enabled
-    ? rateLimit(clientKey(request, user?.userId), RATE_LIMIT.requests, RATE_LIMIT.windowMs)
-    : { allowed: true, retryAfterSeconds: 0 };
+  const rules = chatRateLimitRules(clientKey(request, user?.userId));
+  const limit = rules ? await enforceRateLimits(rules) : { allowed: true, retryAfterSeconds: 0 };
   if (!limit.allowed) {
+    // The daily budget protects the account, so it says so plainly instead of blaming the visitor.
+    const message = limit.scope === 'global'
+      ? 'Cicero ha raggiunto il budget di oggi e riprende domani. Le tappe già scelte restano al loro posto.'
+      : 'Troppe richieste in poco tempo. Riprova tra qualche minuto.';
     return Response.json(
-      { error: 'RATE_LIMITED', message: 'Troppe richieste in poco tempo. Riprova tra qualche minuto.' },
+      { error: 'RATE_LIMITED', message },
       { status: 429, headers: { 'Cache-Control': 'no-store', 'Retry-After': String(limit.retryAfterSeconds) } },
     );
   }

@@ -9,6 +9,13 @@ import type { ChatAction, ChatContext, LatLng, PlaceCandidate, PlaceDetails, Pro
 const MAX_STOPS = 20;
 const FIRST_STOP_OFFSET_MINUTES = 15;
 const MINUTES_PER_STOP = 45;
+/**
+ * Paid-call ceilings for a single HTTP request. Google Places bills per search
+ * and per details lookup, and the agent loop can run several iterations, so the
+ * cost of one turn has to be bounded here rather than left to the model.
+ */
+const MAX_SEARCHES_PER_REQUEST = 3;
+const MAX_DETAILS_PER_REQUEST = 8;
 
 export const AGENT_TOOLS: Anthropic.Beta.BetaTool[] = [
   {
@@ -232,6 +239,8 @@ export class AgentSession {
   actions: ChatAction[] = [];
   private itinerary: Stop[];
   private candidates: PlaceCandidate[];
+  private searches = 0;
+  private details = 0;
 
   constructor(private readonly context: ChatContext) {
     this.itinerary = [...context.itinerary];
@@ -276,9 +285,24 @@ export class AgentSession {
     return stop?.placeId || trimmed;
   }
 
+  /** Charges one paid call against the per-request budget; false means the ceiling is reached. */
+  private spend(kind: 'search' | 'details') {
+    if (kind === 'search') {
+      if (this.searches >= MAX_SEARCHES_PER_REQUEST) return false;
+      this.searches += 1;
+      return true;
+    }
+    if (this.details >= MAX_DETAILS_PER_REQUEST) return false;
+    this.details += 1;
+    return true;
+  }
+
   private async searchPlaces(input: Record<string, unknown>): Promise<ToolOutcome> {
     const query = typeof input.query === 'string' ? input.query.trim() : '';
     if (!query) return { isError: true, content: 'Serve un testo di ricerca.' };
+    if (!this.spend('search')) {
+      return { isError: true, content: `Hai già fatto ${MAX_SEARCHES_PER_REQUEST} ricerche in questo turno: usa i risultati che hai, oppure chiedi all'utente di precisare e riprova al turno successivo.` };
+    }
 
     try {
       const origin = this.resolveOrigin(input);
@@ -310,6 +334,9 @@ export class AgentSession {
     if (placeIds.some((id) => !id)) return { isError: true, content: 'Una delle lettere indicate non corrisponde a un\'opzione mostrata.' };
 
     const results = await Promise.all(placeIds.map(async (id) => {
+      if (!this.spend('details')) {
+        return { id: id!, place: null, error: new Error(`limite di ${MAX_DETAILS_PER_REQUEST} verifiche per turno raggiunto`) };
+      }
       try {
         return { id: id!, place: await getPlaceDetails(id!), error: null };
       } catch (error) {
@@ -402,6 +429,9 @@ export class AgentSession {
   private async placeDetails(input: Record<string, unknown>): Promise<ToolOutcome> {
     const placeId = typeof input.place === 'string' ? this.resolvePlaceId(input.place) : null;
     if (!placeId) return { isError: true, content: 'Luogo non riconosciuto.' };
+    if (!this.spend('details')) {
+      return { isError: true, content: `Limite di ${MAX_DETAILS_PER_REQUEST} verifiche per turno raggiunto: procedi con quello che sai.` };
+    }
     try {
       return { content: describeDetails(await getPlaceDetails(placeId)) };
     } catch (error) {

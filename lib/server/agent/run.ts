@@ -6,6 +6,12 @@ import type { ChatAction, ChatRequest, ChatResponse } from '@/lib/types';
 
 const DEFAULT_MODEL = 'claude-opus-5';
 const MAX_ITERATIONS = 8;
+/**
+ * Tool calls honoured per model response. Each one can reach a paid upstream, so
+ * the ceiling bounds the cost of a single turn; the rest come back as errors the
+ * model can react to.
+ */
+const MAX_TOOLS_PER_RESPONSE = 5;
 const MAX_HISTORY = 24;
 const MAX_OUTPUT_TOKENS = 2048;
 
@@ -102,10 +108,22 @@ export async function runAgent(request: ChatRequest): Promise<ChatResponse> {
     }
 
     messages.push({ role: 'assistant', content: response.content });
-    const results = await Promise.all(toolUses.map(async (toolUse): Promise<Anthropic.Beta.BetaToolResultBlockParam> => {
+    // Sequential on purpose: the session is mutable state, so a later tool must see what an
+    // earlier one did, and the per-request spend ceilings must apply in the order asked for.
+    const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
+    for (const [index, toolUse] of toolUses.entries()) {
+      if (index >= MAX_TOOLS_PER_RESPONSE) {
+        results.push({
+          type: 'tool_result',
+          tool_use_id: toolUse.id,
+          content: `Troppi strumenti in una sola risposta: ne eseguo al massimo ${MAX_TOOLS_PER_RESPONSE}. Riprova con una mossa alla volta.`,
+          is_error: true,
+        });
+        continue;
+      }
       const outcome = await session.execute(toolUse.name, toolUse.input);
-      return { type: 'tool_result', tool_use_id: toolUse.id, content: outcome.content, is_error: outcome.isError || undefined };
-    }));
+      results.push({ type: 'tool_result', tool_use_id: toolUse.id, content: outcome.content, is_error: outcome.isError || undefined });
+    }
     messages.push({ role: 'user', content: results });
 
     // suggest_replies is the closing move of a turn: the user-facing text travels in the same
