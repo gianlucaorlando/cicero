@@ -93,7 +93,7 @@ export function MapStage({
 
       <div className="context-strip" aria-label="Contesto attuale">
         <button className="context-button" type="button" onClick={onOpenLocation}>
-          <MapPin /> {city} · {locationLabel} <ChevronRight />
+          <MapPin /> {locationLabel.toLocaleLowerCase('it') === city.toLocaleLowerCase('it') ? city : `${city} · ${locationLabel}`} <ChevronRight />
         </button>
         <Badge className="context-pill weather" variant="secondary">
           {weather.includes('piove') ? <CloudRain /> : <Sun />} {weather}

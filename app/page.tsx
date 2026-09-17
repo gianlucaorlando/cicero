@@ -43,7 +43,7 @@ export default function Home() {
   const relocateRef = useRef<(relocation: Relocation) => void>(() => undefined);
   const onRelocated = useCallback((relocation: Relocation) => relocateRef.current(relocation), []);
   const location = useLocation({ notify: conversation.notify, onRelocated });
-  const weather = useWeather(location.coords);
+  const { label: weather, ready: weatherReady } = useWeather(location.coords);
   const savedRoutes = useSavedRoutes({ authStatus: auth.status, getAccessToken: auth.getAccessToken });
 
   const [input, setInput] = useState('');
@@ -98,32 +98,44 @@ export default function Home() {
 
   const ask = useCallback((text: string) => conversation.send(text, buildContext()), [buildContext, conversation]);
 
-  // Cicero stays proactive: a moved origin triggers a hidden event and a fresh proposal nearby.
+  // App-generated events (opening move, relocation) wait for the weather of the point they describe,
+  // with a short deadline so a slow forecast never blocks Cicero's first move.
+  const [pendingEvent, setPendingEvent] = useState<{ kind: 'opening' } | { kind: 'relocation'; relocation: Relocation } | null>(null);
+  const kickedOff = useRef(false);
+
   useEffect(() => {
-    relocateRef.current = (relocation) => {
+    relocateRef.current = (relocation) => setPendingEvent({ kind: 'relocation', relocation });
+  }, []);
+
+  useEffect(() => {
+    if (kickedOff.current || !profileSync.ready) return;
+    // The test panel drives the conversation itself, including the opening move.
+    if (new URLSearchParams(window.location.search).get('test') === '1') return;
+    const timeout = window.setTimeout(() => {
+      kickedOff.current = true;
+      setPendingEvent({ kind: 'opening' });
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [profileSync.ready]);
+
+  useEffect(() => {
+    if (!pendingEvent) return;
+    const fire = () => {
+      setPendingEvent(null);
+      if (pendingEvent.kind === 'opening') {
+        void conversation.start(buildContext());
+        return;
+      }
+      const { relocation } = pendingEvent;
       void conversation.send(
         relocationEvent(relocation.label, relocation.city),
         buildContext({ city: relocation.city, locationLabel: relocation.label, origin: relocation.coords }),
         { hidden: true },
       );
     };
-  }, [buildContext, conversation]);
-
-  // Opening move: as soon as profile and weather are known (or 2.5 s have passed), Cicero proposes without being asked.
-  const kickedOff = useRef(false);
-  const [weatherDeadline, setWeatherDeadline] = useState(false);
-  useEffect(() => {
-    const timeout = window.setTimeout(() => setWeatherDeadline(true), 2500);
+    const timeout = window.setTimeout(fire, weatherReady ? 0 : 2500);
     return () => window.clearTimeout(timeout);
-  }, []);
-  const weatherReady = weather !== 'meteo in arrivo' || weatherDeadline;
-  useEffect(() => {
-    if (kickedOff.current || !profileSync.ready || !weatherReady) return;
-    // The test panel drives the conversation itself, including the opening move.
-    if (new URLSearchParams(window.location.search).get('test') === '1') return;
-    kickedOff.current = true;
-    void conversation.start(buildContext());
-  }, [buildContext, conversation, profileSync.ready, weatherReady]);
+  }, [buildContext, conversation, pendingEvent, weatherReady]);
 
   const currentSignature = itinerarySignature(city, locationLabel, coords, itinerary);
   const currentRouteSaved = Boolean(itinerary.length && savedRoutes.savedSignature === currentSignature);
