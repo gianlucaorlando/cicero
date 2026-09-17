@@ -54,7 +54,7 @@ function normalizeRequest(payload: unknown): ChatRequest | null {
   return {
     messages,
     context: {
-      city: textValue(context.city, 100) || 'Milano',
+      city: textValue(context.city, 100) || 'Roma',
       locationLabel: textValue(context.locationLabel, 180) || 'punto di partenza',
       origin: context.origin,
       weather: textValue(context.weather, 80) || 'meteo non disponibile',

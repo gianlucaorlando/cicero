@@ -5,9 +5,10 @@ import { useCallback, useState } from 'react';
 import { geocode, reverseGeocode } from '@/lib/api';
 import type { LatLng, SavedRoute } from '@/lib/types';
 
-const DEFAULT_CITY = 'Milano';
+const DEFAULT_CITY = 'Roma';
 const DEFAULT_LABEL = 'Centro';
-const DEFAULT_COORDS: LatLng = { lat: 45.4642, lng: 9.19 };
+/** Piazza Venezia: the conventional centre of Rome, and the fallback until the user says otherwise. */
+const DEFAULT_COORDS: LatLng = { lat: 41.8959, lng: 12.4823 };
 
 export type Relocation = { coords: LatLng; label: string; city: string };
 

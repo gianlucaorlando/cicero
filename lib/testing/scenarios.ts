@@ -283,16 +283,16 @@ export const scenarios: Scenario[] = [
     description: 'Aggiunte esplicite, riordino, spostamento orari e rimozione.',
     sessions: single('Ritocchi', [
       {
-        say: 'Aggiungi direttamente il Duomo di Milano, senza chiedere.',
+        say: 'Aggiungi direttamente il Pantheon, senza chiedere.',
         checks: [...base, stopsEqual(1), guiMatchesState],
       },
       {
-        say: 'Aggiungi direttamente anche il Castello Sforzesco.',
+        say: 'Aggiungi direttamente anche il Colosseo.',
         checks: [...base, stopsEqual(2), stopsUnchanged, guiMatchesState],
       },
       {
-        say: 'Metti il Castello prima del Duomo.',
-        checks: [...base, stopsEqual(2), firstStopMatches(/castello/i, 'il Castello'), timesAscending, guiMatchesState],
+        say: 'Metti il Colosseo prima del Pantheon.',
+        checks: [...base, stopsEqual(2), firstStopMatches(/colosse/i, 'il Colosseo'), timesAscending, guiMatchesState],
       },
       {
         say: 'Sposta tutto avanti di un’ora.',
@@ -300,7 +300,7 @@ export const scenarios: Scenario[] = [
       },
       {
         say: 'Togli l’ultima tappa.',
-        checks: [...base, stopsEqual(1), firstStopMatches(/castello/i, 'il Castello'), guiMatchesState],
+        checks: [...base, stopsEqual(1), firstStopMatches(/colosse/i, 'il Colosseo'), guiMatchesState],
       },
     ]),
   },
