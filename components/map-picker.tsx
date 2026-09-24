@@ -6,6 +6,7 @@ import type { GeoJSONSource, Map, Marker, Popup } from 'maplibre-gl';
 
 import type { Viewport } from '@/lib/explore';
 import { distanceMeters } from '@/lib/geo';
+import { placeIcon } from '@/lib/place-icons';
 import { framingPoints } from '@/lib/route';
 
 type Coordinates = { lat: number; lng: number };
@@ -29,6 +30,7 @@ type MapDiscovery = {
   name: string;
   lat: number;
   lng: number;
+  primaryType: string;
   category: 'sight' | 'food';
 };
 
@@ -37,7 +39,6 @@ export type MapPopup = { key: string; lat: number; lng: number; lift: number; co
 
 type MapLibreModule = typeof import('maplibre-gl');
 
-const DISCOVERY_GLYPH: Record<MapDiscovery['category'], string> = { sight: '🏛️', food: '🍽️' };
 const DISCOVERY_LABEL: Record<MapDiscovery['category'], string> = { sight: 'Da vedere', food: 'Per mangiare' };
 
 function popupOffset(lift: number) {
@@ -162,12 +163,22 @@ export function MapPicker({
     discoveryMarkersRef.current = discoveryRef.current
       .filter((place) => Number.isFinite(place.lat) && Number.isFinite(place.lng))
       .map((place) => {
+        // Chains in their colours and initials, everything else with the glyph of what it is.
+        const icon = placeIcon(place);
         const element = document.createElement('button');
         element.type = 'button';
-        element.className = `map-discovery-marker ${place.category}`;
+        element.className = `map-discovery-marker ${place.category}${icon.kind === 'brand' ? ' brand' : ''}`;
         element.title = place.name;
-        element.textContent = DISCOVERY_GLYPH[place.category];
-        element.setAttribute('aria-label', `${DISCOVERY_LABEL[place.category]}: ${place.name}. Apri le informazioni`);
+        if (icon.kind === 'brand') {
+          element.textContent = icon.text;
+          element.dataset.length = String(Math.min(3, icon.text.length));
+          element.style.setProperty('--brand-bg', icon.background);
+          element.style.setProperty('--brand-fg', icon.color);
+        } else {
+          element.textContent = icon.glyph;
+        }
+        const kind = icon.kind === 'brand' ? icon.brand : DISCOVERY_LABEL[place.category];
+        element.setAttribute('aria-label', `${kind}: ${place.name}. Apri le informazioni`);
         element.addEventListener('click', (event) => {
           event.stopPropagation();
           onOpenDiscoveryRef.current(place.id);

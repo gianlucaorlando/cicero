@@ -2,10 +2,10 @@
 
 import { Check, Info, Plus } from 'lucide-react';
 
-import { placeTypeLabel } from '@/components/cicero/place-sheet';
 import { Button } from '@/components/ui/button';
 import { formatRating, humanReviewCount } from '@/lib/format';
 import { humanDistance } from '@/lib/geo';
+import { placeTypeLabel } from '@/lib/place-labels';
 import { walkingMinutes } from '@/lib/route';
 import type { PlaceCandidate } from '@/lib/types';
 

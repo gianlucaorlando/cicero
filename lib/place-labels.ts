@@ -1,0 +1,73 @@
+/** Italian names for Google's place types. Anything not listed falls back by family, never to English. */
+const TYPE_LABELS: Record<string, string> = {
+  amphitheatre: 'Anfiteatro',
+  archaeological_site: 'Sito archeologico',
+  art_gallery: 'Galleria d’arte',
+  art_museum: 'Museo d’arte',
+  bakery: 'Panetteria',
+  bar: 'Bar',
+  bar_and_grill: 'Bar e griglieria',
+  basilica: 'Basilica',
+  bistro: 'Bistrot',
+  bridge: 'Ponte',
+  brunch_restaurant: 'Brunch',
+  cafe: 'Caffè',
+  castle: 'Castello',
+  cathedral: 'Cattedrale',
+  catholic_church: 'Chiesa',
+  chinese_restaurant: 'Ristorante cinese',
+  church: 'Chiesa',
+  clothing_store: 'Abbigliamento',
+  coffee_shop: 'Caffetteria',
+  cultural_landmark: 'Luogo culturale',
+  dessert_shop: 'Dolci',
+  fast_food_restaurant: 'Fast food',
+  fountain: 'Fontana',
+  garden: 'Giardino',
+  hamburger_restaurant: 'Hamburgeria',
+  historical_landmark: 'Luogo storico',
+  historical_place: 'Luogo storico',
+  history_museum: 'Museo di storia',
+  hotel: 'Hotel',
+  ice_cream_shop: 'Gelateria',
+  indian_restaurant: 'Ristorante indiano',
+  italian_restaurant: 'Ristorante italiano',
+  japanese_restaurant: 'Ristorante giapponese',
+  market: 'Mercato',
+  mediterranean_restaurant: 'Ristorante mediterraneo',
+  monument: 'Monumento',
+  museum: 'Museo',
+  night_club: 'Locale notturno',
+  observation_deck: 'Belvedere',
+  palace: 'Palazzo',
+  park: 'Parco',
+  pastry_shop: 'Pasticceria',
+  pizza_restaurant: 'Pizzeria',
+  place_of_worship: 'Luogo di culto',
+  plaza: 'Piazza',
+  point_of_interest: 'Luogo di interesse',
+  pub: 'Pub',
+  restaurant: 'Ristorante',
+  sandwich_shop: 'Paninoteca',
+  sculpture: 'Scultura',
+  seafood_restaurant: 'Ristorante di pesce',
+  steak_house: 'Steakhouse',
+  store: 'Negozio',
+  supermarket: 'Supermercato',
+  sushi_restaurant: 'Sushi',
+  tea_house: 'Sala da tè',
+  tourist_attraction: 'Attrazione turistica',
+  vegan_restaurant: 'Ristorante vegano',
+  vegetarian_restaurant: 'Ristorante vegetariano',
+  wine_bar: 'Enoteca',
+};
+
+export function placeTypeLabel(primaryType: string) {
+  if (TYPE_LABELS[primaryType]) return TYPE_LABELS[primaryType];
+  if (/restaurant/.test(primaryType)) return 'Ristorante';
+  if (/museum/.test(primaryType)) return 'Museo';
+  if (/church|chapel/.test(primaryType)) return 'Chiesa';
+  if (/store|shop/.test(primaryType)) return 'Negozio';
+  if (/landmark|historic/.test(primaryType)) return 'Luogo storico';
+  return 'Luogo di interesse';
+}

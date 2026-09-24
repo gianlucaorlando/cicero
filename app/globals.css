@@ -1348,6 +1348,18 @@ h1 {
 .map-discovery-marker:focus-visible { outline: 3px solid rgba(212,81,38,.35); outline-offset: 2px; }
 /* A comfortable touch area around the 34px disc, without a bigger icon on the map */
 .map-discovery-marker::after { position: absolute; inset: -6px; border-radius: 50%; content: ''; }
+/* Chains: their colours and initials, a white ring to stand out on any tile */
+.map-discovery-marker.brand {
+  background: var(--brand-bg);
+  color: var(--brand-fg);
+  box-shadow: 0 3px 10px rgba(67, 45, 31, .28), inset 0 0 0 2px rgba(255, 255, 255, .9);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+.map-discovery-marker.brand[data-length="2"] { font-size: 12px; }
+.map-discovery-marker.brand[data-length="3"] { font-size: 9.5px; letter-spacing: -0.04em; }
 
 /* The compact popup anchored to a pin */
 .place-popup-shell { z-index: 5; }

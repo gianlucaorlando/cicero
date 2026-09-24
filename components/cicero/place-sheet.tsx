@@ -6,39 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { formatRating, humanReviewCount } from '@/lib/format';
 import { humanDistance } from '@/lib/geo';
+import { placeTypeLabel } from '@/lib/place-labels';
 import { walkingMinutes } from '@/lib/route';
 import type { PlaceCandidate } from '@/lib/types';
-
-const TYPE_LABELS: Record<string, string> = {
-  bakery: 'Panetteria',
-  bar: 'Bar',
-  cafe: 'Caffè',
-  church: 'Chiesa',
-  clothing_store: 'Abbigliamento',
-  coffee_shop: 'Caffetteria',
-  art_gallery: 'Galleria d’arte',
-  historical_landmark: 'Luogo storico',
-  history_museum: 'Museo di storia',
-  ice_cream_shop: 'Gelateria',
-  italian_restaurant: 'Ristorante italiano',
-  market: 'Mercato',
-  monument: 'Monumento',
-  museum: 'Museo',
-  night_club: 'Locale notturno',
-  park: 'Parco',
-  pizza_restaurant: 'Pizzeria',
-  point_of_interest: 'Luogo di interesse',
-  restaurant: 'Ristorante',
-  store: 'Negozio',
-  tourist_attraction: 'Attrazione turistica',
-  wine_bar: 'Enoteca',
-};
-
-export function placeTypeLabel(primaryType: string) {
-  if (TYPE_LABELS[primaryType]) return TYPE_LABELS[primaryType];
-  const cleaned = primaryType.replace(/_/g, ' ').trim();
-  return cleaned ? cleaned.charAt(0).toLocaleUpperCase('it') + cleaned.slice(1) : 'Luogo';
-}
 
 type Props = {
   place: PlaceCandidate | null;
