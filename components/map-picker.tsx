@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom';
 import type { GeoJSONSource, Map, Marker, Popup } from 'maplibre-gl';
 
+import type { Viewport } from '@/lib/explore';
+import { distanceMeters } from '@/lib/geo';
 import { framingPoints } from '@/lib/route';
 
 type Coordinates = { lat: number; lng: number };
@@ -76,6 +78,7 @@ export function MapPicker({
   preview,
   previewStartNumber,
   onOpenPreview,
+  onViewportChange,
   popup,
   onPopupClose,
   focusToken,
@@ -92,6 +95,8 @@ export function MapPicker({
   preview: MapCandidate[];
   previewStartNumber: number;
   onOpenPreview: (placeId: string) => void;
+  /** The area on screen after every pan or zoom: the pins follow it. */
+  onViewportChange: (viewport: Viewport) => void;
   popup: MapPopup;
   onPopupClose: () => void;
   focusToken: number;
@@ -112,6 +117,14 @@ export function MapPicker({
   const previewRef = useRef({ places: preview, startNumber: previewStartNumber });
   const previewMarkersRef = useRef<Marker[]>([]);
   const onOpenPreviewRef = useRef(onOpenPreview);
+  const onViewportChangeRef = useRef(onViewportChange);
+  /**
+   * Pins follow the viewport, so they must not move it: only the first points
+   * of interest around a starting point frame the map, and only until the user
+   * pans or zooms it themselves.
+   */
+  const landingFramedRef = useRef(false);
+  const userMovedRef = useRef(false);
   const popupRef = useRef<Popup | null>(null);
   // The popup's React content renders into this node through a portal; null during server render.
   const [popupNode] = useState(() => (typeof document === 'undefined' ? null : document.createElement('div')));
@@ -120,7 +133,7 @@ export function MapPicker({
   const stopsRef = useRef(stops);
   const candidatesRef = useRef(candidates);
 
-  const updateItineraryOverlay = useCallback((fitTarget: 'candidates' | 'route' | false = false) => {
+  const updateItineraryOverlay = useCallback((fitTarget: 'candidates' | 'route' | 'landing' | false = false) => {
     const map = mapRef.current;
     const maplibre = maplibreRef.current;
     if (!map || !maplibre) return;
@@ -222,8 +235,10 @@ export function MapPicker({
     // The whole route stays in frame together with the pins: framing a single proposal
     // zoomed onto it and pushed the stops already chosen off screen.
     // Points of interest join the frame until a route exists; after that the route leads.
+    // The whole route stays in frame together with the pins. Points of interest join
+    // only the landing frame: they follow the viewport, and framing them would chase them.
     const pins = [...validCandidates, ...validPreview];
-    const fitPoints = framingPoints(currentCoords, validStops, validStops.length ? pins : [...pins, ...discoveryRef.current]);
+    const fitPoints = framingPoints(currentCoords, validStops, fitTarget === 'landing' ? [...pins, ...discoveryRef.current] : pins);
     if (fitPoints.length === 1) {
       map.easeTo({ center: fitPoints[0], zoom: Math.max(map.getZoom(), 15.2), duration: 550 });
       return;
@@ -257,7 +272,8 @@ export function MapPicker({
     onOpenDiscoveryRef.current = onOpenDiscovery;
     onOpenPreviewRef.current = onOpenPreview;
     onPopupCloseRef.current = onPopupClose;
-  }, [onOpenDiscovery, onOpenPreview, onPopupClose]);
+    onViewportChangeRef.current = onViewportChange;
+  }, [onOpenDiscovery, onOpenPreview, onPopupClose, onViewportChange]);
 
   useEffect(() => {
     previewRef.current = { places: preview, startNumber: previewStartNumber };
@@ -267,8 +283,10 @@ export function MapPicker({
 
   useEffect(() => {
     discoveryRef.current = discovery;
-    // New points of interest reframe the map only while nothing has been chosen yet.
-    updateItineraryOverlay(stopsRef.current.length || candidatesRef.current.length ? false : 'route');
+    const landing = discovery.length > 0 && !landingFramedRef.current && !userMovedRef.current
+      && !stopsRef.current.length && !candidatesRef.current.length;
+    if (landing) landingFramedRef.current = true;
+    updateItineraryOverlay(landing ? 'landing' : false);
   }, [discovery, updateItineraryOverlay]);
 
   const popupKey = popup?.key ?? null;
@@ -306,6 +324,11 @@ export function MapPicker({
   }, [onReady]);
 
   useEffect(() => {
+    if (coordsRef.current.lat !== coords.lat || coordsRef.current.lng !== coords.lng) {
+      // A new starting point: its points of interest may frame the map once more.
+      landingFramedRef.current = false;
+      userMovedRef.current = false;
+    }
     coordsRef.current = coords;
     stopsRef.current = stops;
     markerRef.current?.setLngLat([coords.lng, coords.lat]);
@@ -446,6 +469,29 @@ export function MapPicker({
       });
 
       markerRef.current = marker;
+
+      const emitViewport = () => {
+        const bounds = map.getBounds();
+        const center = map.getCenter();
+        const container = map.getContainer();
+        onViewportChangeRef.current({
+          center: { lat: center.lat, lng: center.lng },
+          radiusMeters: distanceMeters({ lat: center.lat, lng: center.lng }, { lat: bounds.getNorth(), lng: bounds.getEast() }),
+          zoom: map.getZoom(),
+          bounds: { north: bounds.getNorth(), south: bounds.getSouth(), east: bounds.getEast(), west: bounds.getWest() },
+          widthPx: container.clientWidth,
+          heightPx: container.clientHeight,
+        });
+      };
+      map.on('moveend', emitViewport);
+      // A pan or a pinch by the user (not a fit by the app) makes the view theirs.
+      const markUserMove = (event: { originalEvent?: unknown }) => {
+        if (event.originalEvent) userMovedRef.current = true;
+      };
+      map.on('dragstart', markUserMove);
+      map.on('zoomstart', markUserMove);
+      emitViewport();
+
       updateItineraryOverlay(candidatesRef.current.length ? 'candidates' : 'route');
       map.once('style.load', () => updateItineraryOverlay(candidatesRef.current.length ? 'candidates' : 'route'));
       // The first drawn frame is enough to lift the splash; tiles keep filling in behind it.

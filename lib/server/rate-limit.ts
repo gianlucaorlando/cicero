@@ -111,6 +111,21 @@ export function discoverRateLimitRules(key: string): RateLimitRule[] | null {
 }
 
 /**
+ * Budgets for the pins that follow the map: two paid Places calls per new
+ * area, and only when the client has not covered it already, cached for 20
+ * minutes on a grid. Panning and zooming a city for a few minutes stays
+ * well inside; a script hammering the endpoint does not.
+ */
+export function exploreRateLimitRules(key: string): RateLimitRule[] | null {
+  const production = process.env.NODE_ENV === 'production';
+  if (positiveInt(process.env.CICERO_RATE_LIMIT, 1) === 0) return null;
+  return [
+    { key, limit: production ? 60 : 600, windowMs: 10 * 60 * 1000, scope: 'client' },
+    { key: 'explore', limit: positiveInt(process.env.CICERO_DAILY_EXPLORE_BUDGET, production ? 400 : 3000), windowMs: 24 * 60 * 60 * 1000, scope: 'global' },
+  ];
+}
+
+/**
  * Chat budgets, always on. Development gets a roomier allowance so the GUI test
  * suite (about 45 turns in a few minutes) runs, while a runaway loop still stops.
  * `CICERO_RATE_LIMIT=0` disables them entirely.

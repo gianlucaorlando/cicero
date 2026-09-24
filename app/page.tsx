@@ -13,6 +13,7 @@ import { SavedRoutesSheet } from '@/components/cicero/saved-routes-sheet';
 import { TestPanel } from '@/components/cicero/test-panel';
 import { useAuth0 } from '@/hooks/use-auth0';
 import { useDiscovery } from '@/hooks/use-discovery';
+import { useExplore } from '@/hooks/use-explore';
 import { relocationEvent, useConversation, type ChatMode, type TurnContext } from '@/hooks/use-conversation';
 import { useLocation, type Relocation } from '@/hooks/use-location';
 import { useProfileSync } from '@/hooks/use-profile-sync';
@@ -20,6 +21,7 @@ import { useSavedRoutes } from '@/hooks/use-saved-routes';
 import { useSpeechInput } from '@/hooks/use-speech-input';
 import { useWeather } from '@/hooks/use-weather';
 import type { StopRemoval } from '@/lib/conversation-state';
+import { mergePlaces, selectVisiblePins, type Viewport } from '@/lib/explore';
 import { candidateLetter, localTimeLabel, pluralStops } from '@/lib/format';
 import { itinerarySignature } from '@/lib/geo';
 import type { PreferenceCategory, Profile } from '@/lib/profile';
@@ -55,6 +57,9 @@ export default function Home() {
   const location = useLocation({ notify: conversation.notify, onRelocated });
   const { label: weather, ready: weatherReady } = useWeather(location.coords);
   const discovery = useDiscovery(location.coords);
+  /** The area on screen, reported by the map after every pan or zoom. */
+  const [viewport, setViewport] = useState<Viewport | null>(null);
+  const explored = useExplore(viewport);
   const savedRoutes = useSavedRoutes({ authStatus: auth.status, getAccessToken: auth.getAccessToken });
 
   const [input, setInput] = useState('');
@@ -138,10 +143,28 @@ export default function Home() {
     setRemoval(null);
   }
 
-  /** Points of interest still worth a pin: not already a stop, and not already shown as a proposal or in a proposed walk. */
-  const discoveryPins = useMemo(() => discovery.places.filter((place) => !itinerary.some((stop) => stop.placeId === place.id)
-    && !visibleCandidates.some((candidate) => candidate.id === place.id)
-    && !routePreview.some((stop) => stop.id === place.id)), [discovery.places, itinerary, routePreview, visibleCandidates]);
+  /**
+   * Points of interest on the map: the landing ones plus those found while
+   * exploring, chosen for the area on screen (more when zoomed out, fewer when
+   * zoomed in). A stop, a proposal or a stop of a proposed walk has its own pin.
+   */
+  const discoveryPins = useMemo(() => {
+    const hidden = new Set([
+      ...itinerary.map((stop) => stop.placeId || stop.id),
+      ...visibleCandidates.map((candidate) => candidate.id),
+      ...routePreview.map((stop) => stop.id),
+    ]);
+    const pool = mergePlaces(discovery.places, explored);
+    return viewport
+      ? selectVisiblePins(pool, viewport, hidden, discovery.area?.kind ?? null)
+      : pool.filter((place) => !hidden.has(place.id));
+  }, [discovery.area, discovery.places, explored, itinerary, routePreview, viewport, visibleCandidates]);
+
+  /** What Cicerone knows is on the map: the pins on screen first, then the landing ones (the server keeps 12). */
+  const contextPlaces = useMemo(() => {
+    const shown = new Set(discoveryPins.map((place) => place.id));
+    return [...discoveryPins, ...discovery.places.filter((place) => !shown.has(place.id))];
+  }, [discovery.places, discoveryPins]);
 
   const buildContext = useCallback((overrides: Partial<TurnContext> = {}): TurnContext => ({
     city,
@@ -150,10 +173,10 @@ export default function Home() {
     weather,
     localTime: localTimeLabel(),
     profile,
-    discovery: discovery.places,
+    discovery: contextPlaces,
     area: discovery.area,
     ...overrides,
-  }), [city, coords, discovery.area, discovery.places, locationLabel, profile, weather]);
+  }), [city, contextPlaces, coords, discovery.area, locationLabel, profile, weather]);
 
   const ask = useCallback((text: string) => conversation.send(text, buildContext()), [buildContext, conversation]);
 
@@ -232,7 +255,9 @@ export default function Home() {
   function addDiscovery(place: DiscoveryPlace) {
     setPopupPlaceId(null);
     setDetailPlace(null);
-    void ask(`Aggiungi ${place.name} al percorso.`);
+    // The tapped place goes first in the context, so Cicerone has its id whatever else is on the map.
+    const discoveryFirst = [place, ...contextPlaces.filter((item) => item.id !== place.id)];
+    void conversation.send(`Aggiungi ${place.name} al percorso.`, buildContext({ discovery: discoveryFirst }));
   }
 
   function acceptRoute() {
@@ -370,6 +395,7 @@ export default function Home() {
         discovery={discoveryPins}
         onOpenDiscovery={(place) => setPopupPlaceId(place.id)}
         routePreview={routePreview}
+        onViewportChange={setViewport}
         popup={mapPopup}
         onPopupClose={() => setPopupPlaceId(null)}
         focusToken={routeFocusToken}

@@ -1,15 +1,13 @@
+import { MIX } from '@/lib/discovery-mix';
+import { exploreRadius } from '@/lib/explore';
+import { isFoodType, isSightType } from '@/lib/place-kinds';
 import { WALK_RADIUS_METERS } from '@/lib/route-planner';
-import { findSightsNearby, findTransitHubs, searchPlaces, type TransitHub } from '@/lib/server/places';
+import { findPopularNearby, findSightsNearby, findTransitHubs, FOOD_TYPES, searchPlaces, SIGHT_TYPES, type TransitHub } from '@/lib/server/places';
 import type { AreaInfo, AreaKind, Discovery, DiscoveryCategory, DiscoveryPlace, LatLng, PlaceCandidate } from '@/lib/types';
 
 /**
  * Points of interest shown as soon as the app opens: a mix of sights and
- * places to eat around the origin, weighted by the kind of area.
- *
- *  - near a train station or an airport, food weighs more: people just
- *    arrived, often with luggage, and want to eat or sit down first;
- *  - in the centre or a touristic area, sights and attractions weigh more;
- *  - one never excludes the other: every mix keeps both kinds.
+ * places to eat around the origin, weighted by the kind of area (see MIX).
  */
 
 /** How close a hub must be to count as "near": stations are compact, airports sprawl. */
@@ -18,12 +16,7 @@ export const HUB_RADIUS_METERS: Record<TransitHub['type'], number> = { train_sta
 /** A touristic area has at least this many much-reviewed sights within the radius. */
 export const TOURISTIC = { radiusMeters: 800, minReviews: 3000, minLandmarks: 2 };
 
-export const MIX: Record<AreaKind, Record<DiscoveryCategory, number>> = {
-  transit: { food: 5, sight: 3 },
-  touristic: { sight: 5, food: 3 },
-  'transit-touristic': { food: 4, sight: 4 },
-  ordinary: { sight: 4, food: 4 },
-};
+export { MIX };
 
 const QUERIES: Record<DiscoveryCategory, { query: string; openNow: boolean; radiusMeters: number }> = {
   sight: { query: 'monumenti, piazze, chiese e attrazioni storiche', openNow: false, radiusMeters: 1500 },
@@ -134,8 +127,55 @@ export async function sightsNear(anchor: { id: string; lat: number; lng: number 
   return places;
 }
 
+const exploreCache = new Map<string, { expires: number; places: DiscoveryPlace[] }>();
+
+/**
+ * Snaps a centre to a grid an eighth of the radius wide: panning a little
+ * reuses the answer, and the search runs from the snapped point so the cached
+ * places always match their key.
+ */
+export function exploreCell(center: LatLng, radiusMeters: number) {
+  const radius = exploreRadius(radiusMeters);
+  const latStep = radius / 8 / 111_320;
+  const lat = Math.round(center.lat / latStep) * latStep;
+  // The longitude step comes from the snapped latitude: from the raw one, two points of the
+  // same cell would get slightly different steps, and different cache keys.
+  const lngStep = latStep / Math.max(0.2, Math.cos((lat * Math.PI) / 180));
+  const snapped = { lat, lng: Math.round(center.lng / lngStep) * lngStep };
+  return { center: snapped, radius, key: `${snapped.lat.toFixed(5)},${snapped.lng.toFixed(5)}:${radius}` };
+}
+
+/**
+ * The most popular sights and places to eat on screen, for pins that follow
+ * the map. Food is kept by primary type: hotels and supermarkets with a bar
+ * come back from the food search too.
+ */
+export async function exploreArea(center: LatLng, radiusMeters: number, now = Date.now()): Promise<DiscoveryPlace[]> {
+  const cell = exploreCell(center, radiusMeters);
+  const hit = exploreCache.get(cell.key);
+  if (hit && hit.expires > now) return hit.places;
+
+  const [sights, food] = await Promise.all([
+    findPopularNearby(cell.center, cell.radius, SIGHT_TYPES, 20),
+    findPopularNearby(cell.center, cell.radius, FOOD_TYPES, 20),
+  ]);
+  const seen = new Set<string>();
+  const places: DiscoveryPlace[] = [];
+  for (const [list, category, keep] of [[sights, 'sight', isSightType], [food, 'food', isFoodType]] as const) {
+    for (const place of list) {
+      if (seen.has(place.id) || !keep(place.primaryType) || place.businessStatus === 'CLOSED_PERMANENTLY') continue;
+      seen.add(place.id);
+      places.push({ ...place, category });
+    }
+  }
+  exploreCache.set(cell.key, { expires: now + CACHE_TTL_MS, places });
+  if (exploreCache.size > 1000) exploreCache.clear();
+  return places;
+}
+
 /** Test hook: the caches are module state. */
 export function clearDiscoveryCache() {
   cache.clear();
   sightsCache.clear();
+  exploreCache.clear();
 }

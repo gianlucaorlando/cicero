@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { pluralStops } from '@/lib/format';
 import { mapBanner } from '@/lib/route';
+import type { Viewport } from '@/lib/explore';
 import type { DiscoveryPlace, LatLng, PlaceCandidate, Stop } from '@/lib/types';
 
 type Props = {
@@ -23,6 +24,7 @@ type Props = {
   onOpenDiscovery: (place: DiscoveryPlace) => void;
   /** A proposed walk through nearby sights, drawn dashed after the route until approved. */
   routePreview: PlaceCandidate[];
+  onViewportChange: (viewport: Viewport) => void;
   popup: MapPopup;
   onPopupClose: () => void;
   focusToken: number;
@@ -52,6 +54,7 @@ export function MapStage({
   discovery,
   onOpenDiscovery,
   routePreview,
+  onViewportChange,
   popup,
   onPopupClose,
   focusToken,
@@ -96,6 +99,7 @@ export function MapStage({
           const place = routePreview.find((item) => item.id === placeId);
           if (place) onOpenCandidate(place);
         }}
+        onViewportChange={onViewportChange}
         popup={popup}
         onPopupClose={onPopupClose}
         focusToken={focusToken}

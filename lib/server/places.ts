@@ -133,26 +133,35 @@ export async function searchPlaces(input: SearchPlacesInput): Promise<PlaceCandi
   })));
 }
 
-/** Google types that make a place worth walking to, for the popularity-ranked search around a monument. */
-const SIGHT_TYPES = [
+/** Google types that make a place worth walking to, for popularity-ranked nearby searches. */
+export const SIGHT_TYPES = [
   'tourist_attraction', 'historical_landmark', 'monument', 'church', 'museum', 'art_gallery',
   'plaza', 'fountain', 'cultural_landmark', 'historical_place', 'sculpture',
 ];
 
 /**
- * The most popular sights within a radius, strictly inside it. A text search
- * ranks either by distance (minor chapels first) or by relevance (anywhere in
- * the city); a nearby search by popularity returns the Trevi Fountain and
- * Piazza Navona for the Pantheon, which is what a walk needs.
+ * Places to eat and drink. Hotels and supermarkets with a bar come back too
+ * (the type can be secondary): callers keep only food by primary type.
  */
-export async function findSightsNearby(center: LatLng, radiusMeters: number): Promise<PlaceCandidate[]> {
+export const FOOD_TYPES = [
+  'restaurant', 'pizza_restaurant', 'italian_restaurant', 'fast_food_restaurant', 'cafe', 'coffee_shop',
+  'bar', 'wine_bar', 'pub', 'bakery', 'ice_cream_shop', 'dessert_shop', 'sandwich_shop',
+];
+
+/**
+ * The most popular places of the given types within a radius, strictly inside
+ * it. A text search ranks either by distance (minor chapels first) or by
+ * relevance (anywhere in the city); a nearby search by popularity returns the
+ * Trevi Fountain and Piazza Navona for the Pantheon.
+ */
+export async function findPopularNearby(center: LatLng, radiusMeters: number, includedTypes: string[], maxResults = 20): Promise<PlaceCandidate[]> {
   const apiKey = requireApiKey();
   const response = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': SEARCH_FIELDS },
     body: JSON.stringify({
-      includedTypes: SIGHT_TYPES,
-      maxResultCount: 15,
+      includedTypes,
+      maxResultCount: Math.min(20, Math.max(1, maxResults)),
       rankPreference: 'POPULARITY',
       languageCode: 'it',
       locationRestriction: { circle: { center: { latitude: center.lat, longitude: center.lng }, radius: Math.min(5000, Math.max(100, radiusMeters)) } },
@@ -163,6 +172,11 @@ export async function findSightsNearby(center: LatLng, radiusMeters: number): Pr
     throw new PlacesError('PLACES_UPSTREAM_ERROR', data.error?.message || 'Places non disponibile.', response.status);
   }
   return (data.places || []).map((place) => candidateFrom(place, center)).filter((place): place is PlaceCandidate => place !== null);
+}
+
+/** The most popular sights around a monument, for the walk Cicerone offers. */
+export function findSightsNearby(center: LatLng, radiusMeters: number) {
+  return findPopularNearby(center, radiusMeters, SIGHT_TYPES, 15);
 }
 
 const HUB_FIELDS = ['places.id', 'places.displayName', 'places.types', 'places.location'].join(',');
