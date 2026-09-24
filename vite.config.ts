@@ -46,6 +46,8 @@ export default defineConfig(async () => {
 
   return {
     css: { postcss: { plugins: [tailwindcss()] } },
+    // MapLibre starts its worker as an ES module (`new Worker(url, { type: 'module' })`).
+    worker: { format: 'es' as const },
     server: isCodexSeatbeltSandbox
       ? { watch: { useFsEvents: false, usePolling: true } }
       : undefined,

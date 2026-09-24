@@ -281,7 +281,14 @@ export function MapPicker({
     let disposed = false;
 
     async function initialize() {
-      const maplibre = await import('maplibre-gl');
+      // MapLibre looks for its worker next to its own file, a path computed at runtime that
+      // neither Vite's pre-bundling nor the production build can see: the worker 404s and no
+      // GeoJSON layer is ever drawn, starting with the route line. Vite bundles it and gives the URL.
+      const [maplibre, { default: workerUrl }] = await Promise.all([
+        import('maplibre-gl'),
+        import('maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'),
+      ]);
+      maplibre.setWorkerUrl(workerUrl);
       if (disposed || !containerRef.current) return;
 
       const map = new maplibre.Map({
