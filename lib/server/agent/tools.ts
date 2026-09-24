@@ -193,7 +193,6 @@ function describeCandidate(candidate: PlaceCandidate, index: number) {
     candidate.address,
     humanDistance(candidate.distanceMeters),
     candidate.rating != null ? `Google ${formatRating(candidate.rating)} (${humanReviewCount(candidate.userRatingCount || 0)} recensioni)` : null,
-    candidate.tripadvisor ? `Tripadvisor ${formatRating(candidate.tripadvisor.rating)} (${humanReviewCount(candidate.tripadvisor.reviewCount)})` : null,
     `tipo: ${candidate.primaryType}`,
     candidate.businessStatus && candidate.businessStatus !== 'OPERATIONAL' ? `stato: ${candidate.businessStatus}` : null,
   ];

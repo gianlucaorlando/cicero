@@ -126,6 +126,20 @@ export function exploreRateLimitRules(key: string): RateLimitRule[] | null {
 }
 
 /**
+ * Budgets for the reviews in the extended sheet: one Places call billed at
+ * the Enterprise + Atmosphere SKU (plus Terra when configured), only when a
+ * sheet opens and the place is not cached.
+ */
+export function reviewsRateLimitRules(key: string): RateLimitRule[] | null {
+  const production = process.env.NODE_ENV === 'production';
+  if (positiveInt(process.env.CICERO_RATE_LIMIT, 1) === 0) return null;
+  return [
+    { key, limit: production ? 40 : 400, windowMs: 10 * 60 * 1000, scope: 'client' },
+    { key: 'reviews', limit: positiveInt(process.env.CICERO_DAILY_REVIEWS_BUDGET, production ? 300 : 2000), windowMs: 24 * 60 * 60 * 1000, scope: 'global' },
+  ];
+}
+
+/**
  * Chat budgets, always on. Development gets a roomier allowance so the GUI test
  * suite (about 45 turns in a few minutes) runs, while a runaway loop still stops.
  * `CICERO_RATE_LIMIT=0` disables them entirely.

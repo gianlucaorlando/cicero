@@ -23,7 +23,7 @@ const origin = { lat: 45.4642, lng: 9.19 };
 
 const candidate = (id: string, lat = 45.465, lng = 9.191): PlaceCandidate => ({
   id, name: `Posto ${id}`, address: 'Via X 1', lat, lng, primaryType: 'cafe', businessStatus: 'OPERATIONAL',
-  googleMapsUri: 'https://maps.google.com/?cid=1', rating: 4.5, userRatingCount: 120, distanceMeters: 150, tripadvisor: null,
+  googleMapsUri: 'https://maps.google.com/?cid=1', rating: 4.5, userRatingCount: 120, distanceMeters: 150,
 });
 
 const details = (id: string, lat = 45.465, lng = 9.191): PlaceDetails => ({

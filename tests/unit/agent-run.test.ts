@@ -20,7 +20,7 @@ vi.mock('@/lib/server/places', () => {
     isValidPlaceId: () => true,
     searchPlaces: vi.fn(async () => [{
       id: 'place-aaaa', name: 'Bar Uno', address: 'Via X', lat: 45.465, lng: 9.191, primaryType: 'cafe', businessStatus: 'OPERATIONAL',
-      googleMapsUri: null, rating: 4.4, userRatingCount: 10, distanceMeters: 120, tripadvisor: null,
+      googleMapsUri: null, rating: 4.4, userRatingCount: 10, distanceMeters: 120,
     }]),
     getPlaceDetails: vi.fn(),
   };
@@ -80,7 +80,7 @@ describe('runAgent', () => {
     pending.context.proposing = true;
     pending.context.candidates = [{
       id: 'place-aaaa', name: 'Bar Uno', address: '', lat: 45.465, lng: 9.191, primaryType: 'cafe', businessStatus: null,
-      googleMapsUri: null, rating: null, userRatingCount: null, distanceMeters: 120, tripadvisor: null,
+      googleMapsUri: null, rating: null, userRatingCount: null, distanceMeters: 120,
     }];
     const response = await runAgent(pending);
     const replies = response.actions.find((a) => a.type === 'suggest_replies');

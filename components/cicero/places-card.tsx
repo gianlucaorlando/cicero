@@ -35,14 +35,6 @@ export function PlacesCard({ candidates, disabled, onSelect, letterOffset = 0, t
                   {place.rating != null && place.userRatingCount != null && (
                     <span className="google-review">★ {formatRating(place.rating)} · {humanReviewCount(place.userRatingCount)} su Google</span>
                   )}
-                  {place.tripadvisor && (
-                    <span className="tripadvisor-review">
-                      {/* Tripadvisor's terms require showing their rating image unmodified. */}
-                      {/* oxlint-disable-next-line next/no-img-element */}
-                      <img src={place.tripadvisor.ratingImageUrl} alt={`Tripadvisor ${formatRating(place.tripadvisor.rating)} su 5`} />
-                      <span>{humanReviewCount(place.tripadvisor.reviewCount)} recensioni</span>
-                    </span>
-                  )}
                 </span>
               </span>
               <span className="place-add">{disabled ? <LocateFixed className="spin" /> : '+'}</span>
@@ -53,19 +45,11 @@ export function PlacesCard({ candidates, disabled, onSelect, letterOffset = 0, t
                   <ExternalLink />
                 </a>
               )}
-              {place.tripadvisor && (
-                <a href={place.tripadvisor.webUrl} target="_blank" rel="noreferrer" aria-label={`Leggi le recensioni di ${place.name} su Tripadvisor`}>
-                  Trip
-                </a>
-              )}
             </span>
           </div>
         ))}
       </div>
-      <p className="google-attribution">
-        Dati luogo forniti da <strong>Google Maps</strong>
-        {candidates.some((place) => place.tripadvisor) && <> · valutazioni <strong>Tripadvisor</strong></>}
-      </p>
+      <p className="google-attribution">Dati luogo forniti da <strong>Google Maps</strong></p>
     </article>
   );
 }

@@ -20,14 +20,6 @@ export type Stop = {
   source?: 'google_places';
 };
 
-export type TripadvisorSummary = {
-  locationId: string;
-  rating: number;
-  reviewCount: number;
-  ratingImageUrl: string;
-  webUrl: string;
-};
-
 export type PlaceCandidate = {
   id: string;
   name: string;
@@ -40,7 +32,6 @@ export type PlaceCandidate = {
   rating: number | null;
   userRatingCount: number | null;
   distanceMeters: number;
-  tripadvisor: TripadvisorSummary | null;
 };
 
 export type DiscoveryCategory = 'sight' | 'food';
@@ -69,6 +60,44 @@ export type RouteProposal = {
   stops: PlaceCandidate[];
   /** Walking distance from the anchor through every stop, as the crow flies. */
   distanceMeters: number;
+};
+
+export type ReviewSource = 'google' | 'tripadvisor';
+
+/** One review as written by a traveller, with what each source requires to show it. */
+export type PlaceReview = {
+  id: string;
+  source: ReviewSource;
+  author: string;
+  /** Link to the author's profile (Google requires crediting authors with it). */
+  authorUri: string | null;
+  authorPhotoUri: string | null;
+  /** 1 to 5. */
+  rating: number | null;
+  title: string | null;
+  /** In Italian when the source provides a translation, otherwise as written. */
+  text: string;
+  /** The text as written, when `text` is a translation. */
+  originalText: string | null;
+  publishedAt: string | null;
+  /** The source's own "3 mesi fa", used when there is no exact date. */
+  relativeTime: string | null;
+  /** The review on the source's site. */
+  reviewUri: string | null;
+  /** Where to report the review (Google). */
+  flagUri: string | null;
+};
+
+export type ReviewSummary = { rating: number | null; count: number | null; url: string | null };
+
+/**
+ * Reviews for one place. A source is null when it is not configured or does
+ * not know the place; its list is empty when it has no reviews.
+ */
+export type PlaceReviews = {
+  placeId: string;
+  google: (ReviewSummary & { reviews: PlaceReview[] }) | null;
+  tripadvisor: (ReviewSummary & { reviews: PlaceReview[] }) | null;
 };
 
 export type PlaceDetails = {

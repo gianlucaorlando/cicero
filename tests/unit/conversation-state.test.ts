@@ -5,7 +5,7 @@ import type { PlaceCandidate, Stop } from '@/lib/types';
 
 const candidate = (id: string): PlaceCandidate => ({
   id, name: id, address: '', lat: 45.46, lng: 9.19, primaryType: 'cafe', businessStatus: null,
-  googleMapsUri: null, rating: null, userRatingCount: null, distanceMeters: 100, tripadvisor: null,
+  googleMapsUri: null, rating: null, userRatingCount: null, distanceMeters: 100,
 });
 
 const stop = (id: string, time = '10:00'): Stop => ({

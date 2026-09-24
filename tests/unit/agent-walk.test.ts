@@ -27,7 +27,7 @@ const origin = { lat: 41.8959, lng: 12.4823 };
 
 const place = (id: string, lat: number, lng: number, primaryType: string, userRatingCount: number): PlaceCandidate => ({
   id, name: id.replace(/^ChIJ/, ''), address: 'Roma', lat, lng, primaryType, businessStatus: 'OPERATIONAL',
-  googleMapsUri: null, rating: 4.7, userRatingCount, distanceMeters: 300, tripadvisor: null,
+  googleMapsUri: null, rating: 4.7, userRatingCount, distanceMeters: 300,
 });
 
 const PANTHEON = place('ChIJPantheon', 41.8986, 12.4769, 'historical_landmark', 287_000);

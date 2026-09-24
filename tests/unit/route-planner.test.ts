@@ -10,7 +10,7 @@ const PANTHEON = { id: 'ChIJpantheon00', lat: 41.8986, lng: 12.4769 };
 
 const place = (id: string, lat: number, lng: number, overrides: Partial<PlaceCandidate> = {}): PlaceCandidate => ({
   id, name: id, address: '', lat, lng, primaryType: 'historical_landmark', businessStatus: 'OPERATIONAL',
-  googleMapsUri: null, rating: 4.7, userRatingCount: 10_000, distanceMeters: 0, tripadvisor: null, ...overrides,
+  googleMapsUri: null, rating: 4.7, userRatingCount: 10_000, distanceMeters: 0, ...overrides,
 });
 
 const NAVONA = place('ChIJnavona0000', 41.8992, 12.4731, { userRatingCount: 150_000 });

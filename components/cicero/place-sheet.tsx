@@ -2,6 +2,7 @@
 
 import { Check, ExternalLink, LocateFixed, MapPin, RefreshCw, Star } from 'lucide-react';
 
+import { PlaceReviewsSection } from '@/components/cicero/place-reviews';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { formatRating, humanReviewCount } from '@/lib/format';
@@ -23,7 +24,7 @@ type Props = {
   onOpenChange: (open: boolean) => void;
 };
 
-/** Everything known about one place, opened by tapping the proposal. No extra API call. */
+/** Everything known about one place, opened on request; its latest reviews load when it opens. */
 export function PlaceSheet({ place, reason, actions, busy, onOpenChange }: Props) {
   return (
     <Sheet open={place !== null} onOpenChange={onOpenChange}>
@@ -52,17 +53,6 @@ export function PlaceSheet({ place, reason, actions, busy, onOpenChange }: Props
                     <strong><Star aria-hidden="true" /> {formatRating(place.rating)} su {humanReviewCount(place.userRatingCount || 0)} recensioni</strong>
                   </span>
                 )}
-                {place.tripadvisor && (
-                  <span>
-                    <small>Tripadvisor</small>
-                    <strong>
-                      {/* Tripadvisor's terms require showing their rating image unmodified. */}
-                      {/* oxlint-disable-next-line next/no-img-element */}
-                      <img src={place.tripadvisor.ratingImageUrl} alt={`Tripadvisor ${formatRating(place.tripadvisor.rating)} su 5`} />
-                      {humanReviewCount(place.tripadvisor.reviewCount)} recensioni
-                    </strong>
-                  </span>
-                )}
                 {place.businessStatus && place.businessStatus !== 'OPERATIONAL' && (
                   <span>
                     <small>Attenzione</small>
@@ -70,6 +60,8 @@ export function PlaceSheet({ place, reason, actions, busy, onOpenChange }: Props
                   </span>
                 )}
               </div>
+
+              <PlaceReviewsSection placeId={place.id} />
 
               <p className="place-sheet-note">
                 Orari e informazioni arrivano da Google Places e possono cambiare. Per gli orari di oggi apri la scheda su Maps.
@@ -79,11 +71,6 @@ export function PlaceSheet({ place, reason, actions, busy, onOpenChange }: Props
                 {place.googleMapsUri && (
                   <a href={place.googleMapsUri} target="_blank" rel="noreferrer">
                     <MapPin /> Apri su Google Maps <ExternalLink />
-                  </a>
-                )}
-                {place.tripadvisor && (
-                  <a href={place.tripadvisor.webUrl} target="_blank" rel="noreferrer">
-                    Leggi le recensioni su Tripadvisor <ExternalLink />
                   </a>
                 )}
               </div>

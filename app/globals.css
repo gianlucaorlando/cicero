@@ -1458,3 +1458,81 @@ h1 {
 .route-proposal-list button small { color: var(--muted-foreground); font-size: 12px; }
 .route-proposal-list button > svg { flex: none; width: 16px; height: 16px; color: var(--muted-foreground); }
 .route-proposal-list button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 10px; }
+
+/* Latest reviews in the extended sheet */
+.place-reviews { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid var(--border); }
+.place-reviews header { display: flex; flex-direction: column; gap: 2px; }
+.place-reviews h3 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+.place-reviews header small { color: var(--muted-foreground); font-size: 11.5px; line-height: 1.4; }
+.place-review-list { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.place-review { display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 1px solid #eadfd3; border-radius: 14px; background: #fffdf8; }
+.place-review-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.place-review-avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #f1e3d6;
+  color: #8f4229;
+  font-size: 13px;
+  font-weight: 800;
+  object-fit: cover;
+}
+.place-review-who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.place-review-who > a,
+.place-review-who > strong { overflow: hidden; color: #3e3128; font-size: 13.5px; font-weight: 700; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.place-review-who > a:hover { text-decoration: underline; }
+.place-review-who small { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--muted-foreground); font-size: 11.5px; }
+.place-review-stars { display: inline-flex; gap: 1px; }
+.place-review-stars svg { width: 12px; height: 12px; color: #d9c9b8; }
+.place-review-stars svg.filled { color: #e0a126; fill: #e0a126; }
+.place-review-source { padding: 1px 6px; border-radius: 999px; background: #f2ebe3; color: #6f5f53; font-size: 10.5px; font-weight: 700; }
+.place-review-source.tripadvisor { background: #e3f4ec; color: #1b6b47; }
+.place-review-title { font-size: 13.5px; line-height: 1.35; }
+.place-review-text { margin: 0; color: #3e3128; font-size: 13.5px; line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
+.place-review-text.clamped { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 5; }
+.place-review-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; }
+.place-review-actions button,
+.place-review-actions a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #a34728;
+  font-size: 12.5px;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+}
+.place-review-actions a[aria-label^="Segnala"] { color: var(--muted-foreground); font-weight: 500; }
+.place-review-actions svg { width: 13px; height: 13px; }
+.place-review.skeleton { gap: 8px; }
+.place-review.skeleton span { display: block; height: 10px; border-radius: 6px; background: linear-gradient(90deg, #f1e7dc, #f8f1ea, #f1e7dc); background-size: 200% 100%; animation: review-shimmer 1.2s linear infinite; }
+.place-review.skeleton span:first-child { width: 40%; height: 12px; }
+.place-review.skeleton span:last-child { width: 85%; }
+@keyframes review-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .place-review.skeleton span { animation: none; } }
+.place-reviews-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid #e2cdbd;
+  border-radius: 12px;
+  background: #fff7ee;
+  color: #8f4229;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.place-reviews-retry svg { width: 14px; height: 14px; }
+.place-reviews-empty { margin: 0; color: var(--muted-foreground); font-size: 13px; }
+.place-reviews-sources { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.place-reviews-sources a { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; color: #a34728; font-size: 12.5px; font-weight: 650; text-decoration: none; }
+.place-reviews-sources a svg { width: 13px; height: 13px; }

@@ -1,5 +1,4 @@
 import { distanceMeters } from '@/lib/geo';
-import { fetchTripadvisorSummary } from '@/lib/server/tripadvisor';
 import type { LatLng, PlaceCandidate, PlaceDetails } from '@/lib/types';
 
 export class PlacesError extends Error {
@@ -89,7 +88,6 @@ function candidateFrom(place: GooglePlacePayload, from: LatLng): PlaceCandidate 
     rating: place.rating ?? null,
     userRatingCount: place.userRatingCount ?? null,
     distanceMeters: distanceMeters(from, point),
-    tripadvisor: null,
   };
 }
 
@@ -122,15 +120,9 @@ export async function searchPlaces(input: SearchPlacesInput): Promise<PlaceCandi
     throw new PlacesError('PLACES_UPSTREAM_ERROR', data.error?.message || 'Places non disponibile.', response.status);
   }
 
-  const places = (data.places || [])
+  return (data.places || [])
     .map((place) => candidateFrom(place, input.origin))
     .filter((place): place is PlaceCandidate => place !== null);
-
-  const tripadvisorApiKey = process.env.TRIPADVISOR_API_KEY;
-  return Promise.all(places.map(async (place) => ({
-    ...place,
-    tripadvisor: tripadvisorApiKey ? await fetchTripadvisorSummary(place, tripadvisorApiKey) : null,
-  })));
 }
 
 /** Google types that make a place worth walking to, for popularity-ranked nearby searches. */

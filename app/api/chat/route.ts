@@ -31,7 +31,6 @@ function normalizeCandidate(value: unknown): PlaceCandidate | null {
     rating: typeof candidate.rating === 'number' ? candidate.rating : null,
     userRatingCount: typeof candidate.userRatingCount === 'number' ? candidate.userRatingCount : null,
     distanceMeters: typeof candidate.distanceMeters === 'number' ? candidate.distanceMeters : 0,
-    tripadvisor: null,
   };
 }
 

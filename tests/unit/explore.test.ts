@@ -29,7 +29,7 @@ const ROME = { lat: 41.8986, lng: 12.4769 };
 
 const place = (id: string, lat: number, lng: number, category: DiscoveryPlace['category'], userRatingCount: number, primaryType?: string): DiscoveryPlace => ({
   id, name: id, address: '', lat, lng, primaryType: primaryType ?? (category === 'food' ? 'restaurant' : 'historical_landmark'),
-  businessStatus: 'OPERATIONAL', googleMapsUri: null, rating: 4.5, userRatingCount, distanceMeters: 0, tripadvisor: null, category,
+  businessStatus: 'OPERATIONAL', googleMapsUri: null, rating: 4.5, userRatingCount, distanceMeters: 0, category,
 });
 
 /** A viewport of the given zoom centred on Rome, sized like a laptop map. */
@@ -160,7 +160,7 @@ describe('covering the screen', () => {
 describe('exploreArea', () => {
   const candidate = (id: string, primaryType: string, businessStatus = 'OPERATIONAL'): PlaceCandidate => ({
     id, name: id, address: '', lat: ROME.lat, lng: ROME.lng, primaryType, businessStatus,
-    googleMapsUri: null, rating: 4.5, userRatingCount: 100, distanceMeters: 0, tripadvisor: null,
+    googleMapsUri: null, rating: 4.5, userRatingCount: 100, distanceMeters: 0,
   });
 
   beforeEach(() => {

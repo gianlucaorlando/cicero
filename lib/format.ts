@@ -40,6 +40,26 @@ export function pluralStops(count: number) {
   return `${count} ${count === 1 ? 'tappa' : 'tappe'}`;
 }
 
+const RELATIVE_UNITS: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+  ['year', 365 * 24 * 60 * 60 * 1000],
+  ['month', 30 * 24 * 60 * 60 * 1000],
+  ['week', 7 * 24 * 60 * 60 * 1000],
+  ['day', 24 * 60 * 60 * 1000],
+  ['hour', 60 * 60 * 1000],
+];
+
+/** "2 settimane fa", "ieri", "un mese fa": how long ago, in words. */
+export function relativeTimeLabel(iso: string, now = Date.now()) {
+  const time = Date.parse(iso);
+  if (Number.isNaN(time)) return null;
+  const elapsed = Math.max(0, now - time);
+  const format = new Intl.RelativeTimeFormat('it', { numeric: 'auto' });
+  for (const [unit, size] of RELATIVE_UNITS) {
+    if (elapsed >= size) return format.format(-Math.floor(elapsed / size), unit);
+  }
+  return 'poco fa';
+}
+
 export function candidateLetter(index: number) {
   return String.fromCharCode(65 + index);
 }
