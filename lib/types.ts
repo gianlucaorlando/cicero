@@ -43,6 +43,21 @@ export type PlaceCandidate = {
   tripadvisor: TripadvisorSummary | null;
 };
 
+export type DiscoveryCategory = 'sight' | 'food';
+
+/** A point of interest shown on the map as soon as the app opens. */
+export type DiscoveryPlace = PlaceCandidate & { category: DiscoveryCategory };
+
+/**
+ * Where the user is standing, which decides the mix of points of interest.
+ * The two conditions can hold together: a station can sit in a touristic area.
+ */
+export type AreaKind = 'transit' | 'touristic' | 'transit-touristic' | 'ordinary';
+
+export type AreaInfo = { kind: AreaKind; hub: string | null };
+
+export type Discovery = { places: DiscoveryPlace[]; area: AreaInfo };
+
 export type PlaceDetails = {
   id: string;
   name: string;
@@ -97,6 +112,10 @@ export type ChatContext = {
   /** Whether candidates[0] is being proposed to the user right now. */
   proposing: boolean;
   profile: Profile;
+  /** Points of interest already on the map since the app opened. */
+  discovery?: DiscoveryPlace[];
+  /** Kind of area around the origin: transit hub, touristic, both or neither. */
+  area?: AreaInfo | null;
 };
 
 export type ChatRequest = {

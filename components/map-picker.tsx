@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
-import type { GeoJSONSource, Map, Marker } from 'maplibre-gl';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import type { GeoJSONSource, Map, Marker, Popup } from 'maplibre-gl';
 
 import { framingPoints } from '@/lib/route';
 
@@ -21,7 +22,35 @@ type MapCandidate = {
   lng: number;
 };
 
+type MapDiscovery = {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  category: 'sight' | 'food';
+};
+
+/** A compact card anchored to a pin. `lift` is how far above the point the pin's head sits. */
+export type MapPopup = { key: string; lat: number; lng: number; lift: number; content: ReactNode } | null;
+
 type MapLibreModule = typeof import('maplibre-gl');
+
+const DISCOVERY_GLYPH: Record<MapDiscovery['category'], string> = { sight: '🏛️', food: '🍽️' };
+const DISCOVERY_LABEL: Record<MapDiscovery['category'], string> = { sight: 'Da vedere', food: 'Per mangiare' };
+
+function popupOffset(lift: number) {
+  return {
+    top: [0, 10] as [number, number],
+    'top-left': [0, 10] as [number, number],
+    'top-right': [0, 10] as [number, number],
+    bottom: [0, -lift] as [number, number],
+    'bottom-left': [0, -lift] as [number, number],
+    'bottom-right': [0, -lift] as [number, number],
+    left: [18, -lift / 2] as [number, number],
+    right: [-18, -lift / 2] as [number, number],
+    center: [0, 0] as [number, number],
+  };
+}
 
 function routeFeature(points: Array<[number, number]>) {
   return {
@@ -42,6 +71,10 @@ export function MapPicker({
   stops,
   candidates,
   onSelectCandidate,
+  discovery,
+  onOpenDiscovery,
+  popup,
+  onPopupClose,
   focusToken,
   onReady,
 }: {
@@ -50,6 +83,10 @@ export function MapPicker({
   stops: MapStop[];
   candidates: MapCandidate[];
   onSelectCandidate: (candidateId: string) => void;
+  discovery: MapDiscovery[];
+  onOpenDiscovery: (placeId: string) => void;
+  popup: MapPopup;
+  onPopupClose: () => void;
   focusToken: number;
   onReady?: () => void;
 }) {
@@ -61,6 +98,13 @@ export function MapPicker({
   const candidateMarkersRef = useRef<Marker[]>([]);
   const onChangeRef = useRef(onChange);
   const onSelectCandidateRef = useRef(onSelectCandidate);
+  const onOpenDiscoveryRef = useRef(onOpenDiscovery);
+  const onPopupCloseRef = useRef(onPopupClose);
+  const discoveryRef = useRef(discovery);
+  const discoveryMarkersRef = useRef<Marker[]>([]);
+  const popupRef = useRef<Popup | null>(null);
+  // The popup's React content renders into this node through a portal; null during server render.
+  const [popupNode] = useState(() => (typeof document === 'undefined' ? null : document.createElement('div')));
   const onReadyRef = useRef(onReady);
   const coordsRef = useRef(coords);
   const stopsRef = useRef(stops);
@@ -82,6 +126,26 @@ export function MapPicker({
 
     const routeSource = map.getSource('itinerary-route') as GeoJSONSource | undefined;
     void routeSource?.setData(routeFeature(routePoints));
+
+    // Points of interest first, so stops and proposals are drawn on top of them.
+    discoveryMarkersRef.current.forEach((marker) => marker.remove());
+    discoveryMarkersRef.current = discoveryRef.current
+      .filter((place) => Number.isFinite(place.lat) && Number.isFinite(place.lng))
+      .map((place) => {
+        const element = document.createElement('button');
+        element.type = 'button';
+        element.className = `map-discovery-marker ${place.category}`;
+        element.title = place.name;
+        element.textContent = DISCOVERY_GLYPH[place.category];
+        element.setAttribute('aria-label', `${DISCOVERY_LABEL[place.category]}: ${place.name}. Apri le informazioni`);
+        element.addEventListener('click', (event) => {
+          event.stopPropagation();
+          onOpenDiscoveryRef.current(place.id);
+        });
+        return new maplibre.Marker({ element, anchor: 'center' })
+          .setLngLat([place.lng, place.lat])
+          .addTo(map);
+      });
 
     stopMarkersRef.current.forEach((marker) => marker.remove());
     stopMarkersRef.current = validStops.map((stop, index) => {
@@ -122,7 +186,8 @@ export function MapPicker({
     if (!fitTarget) return;
     // The whole route stays in frame together with the pins: framing a single proposal
     // zoomed onto it and pushed the stops already chosen off screen.
-    const fitPoints = framingPoints(currentCoords, validStops, validCandidates);
+    // Points of interest join the frame until a route exists; after that the route leads.
+    const fitPoints = framingPoints(currentCoords, validStops, validStops.length ? validCandidates : [...validCandidates, ...discoveryRef.current]);
     if (fitPoints.length === 1) {
       map.easeTo({ center: fitPoints[0], zoom: Math.max(map.getZoom(), 15.2), duration: 550 });
       return;
@@ -150,6 +215,47 @@ export function MapPicker({
   useEffect(() => {
     onSelectCandidateRef.current = onSelectCandidate;
   }, [onSelectCandidate]);
+
+  useEffect(() => {
+    onOpenDiscoveryRef.current = onOpenDiscovery;
+    onPopupCloseRef.current = onPopupClose;
+  }, [onOpenDiscovery, onPopupClose]);
+
+  useEffect(() => {
+    discoveryRef.current = discovery;
+    // New points of interest reframe the map only while nothing has been chosen yet.
+    updateItineraryOverlay(stopsRef.current.length || candidatesRef.current.length ? false : 'route');
+  }, [discovery, updateItineraryOverlay]);
+
+  const popupKey = popup?.key ?? null;
+  const popupLat = popup?.lat;
+  const popupLng = popup?.lng;
+  const popupLift = popup?.lift ?? 0;
+  useEffect(() => {
+    const previous = popupRef.current;
+    popupRef.current = null;
+    previous?.remove();
+    const map = mapRef.current;
+    const maplibre = maplibreRef.current;
+    if (!map || !maplibre || !popupNode || popupKey === null || popupLat === undefined || popupLng === undefined) return;
+    const instance = new maplibre.Popup({
+      className: 'place-popup-shell',
+      closeButton: true,
+      closeOnClick: true,
+      maxWidth: '300px',
+      offset: popupOffset(popupLift),
+    })
+      .setLngLat([popupLng, popupLat])
+      .setDOMContent(popupNode)
+      .addTo(map);
+    instance.on('close', () => {
+      // Closed by the user (x or a tap on the map), not replaced by another popup.
+      if (popupRef.current !== instance) return;
+      popupRef.current = null;
+      onPopupCloseRef.current();
+    });
+    popupRef.current = instance;
+  }, [popupKey, popupLat, popupLng, popupLift, popupNode]);
 
   useEffect(() => {
     onReadyRef.current = onReady;
@@ -296,6 +402,10 @@ export function MapPicker({
       stopMarkersRef.current = [];
       candidateMarkersRef.current.forEach((marker) => marker.remove());
       candidateMarkersRef.current = [];
+      discoveryMarkersRef.current.forEach((marker) => marker.remove());
+      discoveryMarkersRef.current = [];
+      popupRef.current?.remove();
+      popupRef.current = null;
       markerRef.current?.remove();
       mapRef.current?.remove();
       markerRef.current = null;
@@ -305,5 +415,10 @@ export function MapPicker({
     // The map is created once; coordinate and itinerary changes are handled above.
   }, [updateItineraryOverlay]);
 
-  return <div ref={containerRef} className="map-canvas" aria-label="Mappa interattiva con percorso, risultati selezionabili e pin trascinabile" />;
+  return (
+    <>
+      <div ref={containerRef} className="map-canvas" aria-label="Mappa interattiva con percorso, punti di interesse e pin trascinabile" />
+      {popupNode && popup ? createPortal(popup.content, popupNode) : null}
+    </>
+  );
 }

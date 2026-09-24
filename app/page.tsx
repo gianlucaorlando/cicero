@@ -5,12 +5,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, type SubmitEvent } f
 import { ConversationPanel } from '@/components/cicero/conversation-panel';
 import { LocationSheet } from '@/components/cicero/location-sheet';
 import { MapStage } from '@/components/cicero/map-stage';
+import { PlacePopup, type PopupAction } from '@/components/cicero/place-popup';
 import { PlaceSheet } from '@/components/cicero/place-sheet';
 import { ProfileSheet, type ManualPreferenceKey } from '@/components/cicero/profile-sheet';
 import { RouteDetailSheet } from '@/components/cicero/route-detail-sheet';
 import { SavedRoutesSheet } from '@/components/cicero/saved-routes-sheet';
 import { TestPanel } from '@/components/cicero/test-panel';
 import { useAuth0 } from '@/hooks/use-auth0';
+import { useDiscovery } from '@/hooks/use-discovery';
 import { relocationEvent, useConversation, type ChatMode, type TurnContext } from '@/hooks/use-conversation';
 import { useLocation, type Relocation } from '@/hooks/use-location';
 import { useProfileSync } from '@/hooks/use-profile-sync';
@@ -20,7 +22,7 @@ import { useWeather } from '@/hooks/use-weather';
 import { candidateLetter, localTimeLabel, pluralStops } from '@/lib/format';
 import { itinerarySignature } from '@/lib/geo';
 import type { PreferenceCategory, Profile } from '@/lib/profile';
-import type { PlaceCandidate, SavedRoute } from '@/lib/types';
+import type { DiscoveryPlace, PlaceCandidate, SavedRoute } from '@/lib/types';
 
 function hideSplash() {
   const splash = document.getElementById('app-splash');
@@ -45,6 +47,7 @@ export default function Home() {
   const onRelocated = useCallback((relocation: Relocation) => relocateRef.current(relocation), []);
   const location = useLocation({ notify: conversation.notify, onRelocated });
   const { label: weather, ready: weatherReady } = useWeather(location.coords);
+  const discovery = useDiscovery(location.coords);
   const savedRoutes = useSavedRoutes({ authStatus: auth.status, getAccessToken: auth.getAccessToken });
 
   const [input, setInput] = useState('');
@@ -57,8 +60,10 @@ export default function Home() {
   const [testPanelOpen, setTestPanelOpen] = useState(false);
   /** Id of the proposal whose alternatives are expanded; a new proposal collapses them again. */
   const [alternativesOpenFor, setAlternativesOpenFor] = useState<string | null>(null);
-  /** Place whose detail sheet is open, opened by tapping the proposal. */
+  /** Place whose detail sheet is open: from the proposal card, or "Dettagli" in a popup. */
   const [detailPlace, setDetailPlace] = useState<PlaceCandidate | null>(null);
+  /** Place whose compact popup is open on the map, after a tap on its pin. */
+  const [popupPlaceId, setPopupPlaceId] = useState<string | null>(null);
   /** While the test panel runs it works on this profile, so the real one is never written. */
   const [testProfile, setTestProfile] = useState<Profile | null>(null);
 
@@ -99,6 +104,10 @@ export default function Home() {
   }, [alternativesOpen, candidates, listed, proposal]);
   const { city, locationLabel, coords } = location;
 
+  /** Points of interest still worth a pin: not already a stop, and not already shown as a proposal. */
+  const discoveryPins = useMemo(() => discovery.places.filter((place) => !itinerary.some((stop) => stop.placeId === place.id)
+    && !visibleCandidates.some((candidate) => candidate.id === place.id)), [discovery.places, itinerary, visibleCandidates]);
+
   const buildContext = useCallback((overrides: Partial<TurnContext> = {}): TurnContext => ({
     city,
     locationLabel,
@@ -106,8 +115,10 @@ export default function Home() {
     weather,
     localTime: localTimeLabel(),
     profile,
+    discovery: discovery.places,
+    area: discovery.area,
     ...overrides,
-  }), [city, coords, locationLabel, profile, weather]);
+  }), [city, coords, discovery.area, discovery.places, locationLabel, profile, weather]);
 
   const ask = useCallback((text: string) => conversation.send(text, buildContext()), [buildContext, conversation]);
 
@@ -147,9 +158,10 @@ export default function Home() {
         { hidden: true },
       );
     };
-    const timeout = window.setTimeout(fire, weatherReady ? 0 : 2500);
+    // Weather and points of interest describe the new point; wait for both, but never more than 3 s.
+    const timeout = window.setTimeout(fire, weatherReady && discovery.ready ? 0 : 3000);
     return () => window.clearTimeout(timeout);
-  }, [buildContext, conversation, conversation.thinking, pendingEvent, weatherReady]);
+  }, [buildContext, conversation, conversation.thinking, discovery.ready, pendingEvent, weatherReady]);
 
   const currentSignature = itinerarySignature(city, locationLabel, coords, itinerary);
   const currentRouteSaved = Boolean(itinerary.length && savedRoutes.savedSignature === currentSignature);
@@ -181,6 +193,52 @@ export default function Home() {
   }
 
   const detailIsProposal = detailPlace !== null && proposal !== null && detailPlace.id === proposal.candidate.id;
+
+  function addDiscovery(place: DiscoveryPlace) {
+    setPopupPlaceId(null);
+    setDetailPlace(null);
+    void ask(`Aggiungi ${place.name} al percorso.`);
+  }
+
+  /** The one action a place offers, wherever it is opened: accept, choose or add. */
+  function primaryActionFor(place: PlaceCandidate): (PopupAction & { onDecline?: () => void }) | null {
+    if (proposal && place.id === proposal.candidate.id) {
+      return { label: 'Sì, aggiungila', kind: 'accept', onClick: acceptProposal, onDecline: declineProposal };
+    }
+    if (candidates.some((item) => item.id === place.id)) return { label: 'Scegli questo', kind: 'accept', onClick: () => selectCandidate(place) };
+    const poi = discovery.places.find((item) => item.id === place.id);
+    if (poi) return { label: 'Aggiungi al percorso', kind: 'add', onClick: () => addDiscovery(poi) };
+    return null;
+  }
+
+  const popupPlace = useMemo(() => [...visibleCandidates, ...discoveryPins].find((place) => place.id === popupPlaceId) ?? null,
+    [discoveryPins, popupPlaceId, visibleCandidates]);
+  const popupPrimary = popupPlace ? primaryActionFor(popupPlace) : null;
+  const mapPopup = popupPlace ? {
+    key: popupPlace.id,
+    lat: popupPlace.lat,
+    lng: popupPlace.lng,
+    // Proposal pins are tall teardrops; point-of-interest icons are centred discs.
+    lift: visibleCandidates.some((candidate) => candidate.id === popupPlace.id) ? 52 : 22,
+    content: (
+      <PlacePopup
+        place={popupPlace}
+        primary={popupPrimary && {
+          ...popupPrimary,
+          onClick: () => {
+            setPopupPlaceId(null);
+            popupPrimary.onClick();
+          },
+        }}
+        busy={conversation.thinking}
+        onDetails={() => {
+          setPopupPlaceId(null);
+          setDetailPlace(popupPlace);
+        }}
+      />
+    ),
+  } : null;
+  const detailPrimary = detailPlace ? primaryActionFor(detailPlace) : null;
 
   function acceptProposal() {
     setDetailPlace(null);
@@ -254,7 +312,11 @@ export default function Home() {
         onMovePin={location.movePin}
         stops={itinerary}
         candidates={visibleCandidates}
-        onOpenCandidate={setDetailPlace}
+        onOpenCandidate={(candidate) => setPopupPlaceId(candidate.id)}
+        discovery={discoveryPins}
+        onOpenDiscovery={(place) => setPopupPlaceId(place.id)}
+        popup={mapPopup}
+        onPopupClose={() => setPopupPlaceId(null)}
         focusToken={routeFocusToken}
         city={city}
         locationLabel={locationLabel}
@@ -308,13 +370,7 @@ export default function Home() {
       <PlaceSheet
         place={detailPlace}
         reason={detailIsProposal ? proposal?.reason : undefined}
-        actions={detailPlace === null
-          ? undefined
-          : detailIsProposal
-            ? { acceptLabel: 'Sì, aggiungila', onAccept: acceptProposal, onDecline: declineProposal }
-            : candidates.some((item) => item.id === detailPlace.id)
-              ? { acceptLabel: 'Scegli questo', onAccept: () => selectCandidate(detailPlace) }
-              : undefined}
+        actions={detailPrimary ? { acceptLabel: detailPrimary.label, onAccept: detailPrimary.onClick, onDecline: detailPrimary.onDecline } : undefined}
         busy={conversation.thinking}
         onOpenChange={(open) => { if (!open) setDetailPlace(null); }}
       />

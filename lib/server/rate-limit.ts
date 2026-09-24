@@ -98,6 +98,19 @@ function positiveInt(value: string | undefined, fallback: number) {
 }
 
 /**
+ * Budgets for the landing lookup of points of interest: three paid Places
+ * calls, cached for 20 minutes per ~110 m, so the numbers can be roomier.
+ */
+export function discoverRateLimitRules(key: string): RateLimitRule[] | null {
+  const production = process.env.NODE_ENV === 'production';
+  if (positiveInt(process.env.CICERO_RATE_LIMIT, 1) === 0) return null;
+  return [
+    { key, limit: production ? 30 : 300, windowMs: 10 * 60 * 1000, scope: 'client' },
+    { key: 'discover', limit: positiveInt(process.env.CICERO_DAILY_DISCOVER_BUDGET, production ? 600 : 2000), windowMs: 24 * 60 * 60 * 1000, scope: 'global' },
+  ];
+}
+
+/**
  * Chat budgets, always on. Development gets a roomier allowance so the GUI test
  * suite (about 45 turns in a few minutes) runs, while a runaway loop still stops.
  * `CICERO_RATE_LIMIT=0` disables them entirely.

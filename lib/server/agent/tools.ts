@@ -36,7 +36,7 @@ export const AGENT_TOOLS: Anthropic.Beta.BetaTool[] = [
   },
   {
     name: 'propose_stop',
-    description: 'Propone all\'utente un solo luogo tra i risultati trovati, con una motivazione breve. L\'interfaccia mostra la scheda con i pulsanti "Sì" e "Un\'altra"; le altre opzioni restano disponibili se l\'utente le chiede.',
+    description: 'Propone all\'utente un solo luogo, scelto tra i risultati dell\'ultima ricerca o tra i punti di interesse già sulla mappa, con una motivazione breve. L\'interfaccia mostra la scheda con i pulsanti "Sì" e "Un\'altra"; le altre opzioni restano disponibili se l\'utente le chiede.',
     input_schema: {
       type: 'object',
       additionalProperties: false,
@@ -249,10 +249,13 @@ export class AgentSession {
   private candidates: PlaceCandidate[];
   private searches = 0;
   private details = 0;
+  /** Points of interest already on the map: they can be proposed without paying for a search. */
+  private discovery: PlaceCandidate[];
 
   constructor(private readonly context: ChatContext) {
     this.itinerary = [...context.itinerary];
     this.candidates = [...context.candidates];
+    this.discovery = [...(context.discovery ?? [])];
   }
 
   async execute(name: string, rawInput: unknown): Promise<ToolOutcome> {
@@ -402,8 +405,18 @@ export class AgentSession {
 
   private proposeStop(input: Record<string, unknown>): ToolOutcome {
     const placeId = typeof input.place === 'string' ? this.resolvePlaceId(input.place) : null;
-    const candidate = this.candidates.find((item) => item.id === placeId);
-    if (!candidate) return { isError: true, content: 'Il luogo da proporre deve essere tra i risultati dell\'ultima ricerca.' };
+    let candidate = this.candidates.find((item) => item.id === placeId);
+    if (!candidate) {
+      // A point of interest already shown on the map is verified data: no new search needed,
+      // and the others on the map become the alternatives behind "Un'altra".
+      const fromMap = this.discovery.find((item) => item.id === placeId);
+      if (fromMap) {
+        this.candidates = [fromMap, ...this.discovery.filter((item) => item.id !== fromMap.id
+          && !this.itinerary.some((stop) => stop.placeId === item.id))];
+        candidate = fromMap;
+      }
+    }
+    if (!candidate) return { isError: true, content: 'Il luogo da proporre deve essere tra i risultati dell\'ultima ricerca o tra i punti di interesse sulla mappa.' };
     if (this.itinerary.some((stop) => stop.placeId === candidate.id)) return { isError: true, content: `${candidate.name} è già nell'itinerario.` };
 
     const reason = typeof input.reason === 'string' ? input.reason.trim().slice(0, 200) : '';

@@ -6,7 +6,7 @@ export const MINUTES_PER_STOP = 45;
 /** Walking pace used for every estimate in the app: about 4.8 km/h. */
 export const WALKING_METERS_PER_MINUTE = 80;
 
-export type MapBanner = 'route' | 'proposal' | 'list' | 'none';
+export type MapBanner = 'route' | 'proposal' | 'list' | 'discovery' | 'none';
 
 /**
  * Which banner sits at the bottom of the map.
@@ -15,10 +15,11 @@ export type MapBanner = 'route' | 'proposal' | 'list' | 'none';
  * proposal is pending after almost every "yes": letting it take the banner's
  * place removed the only way to open the full route.
  */
-export function mapBanner(stopCount: number, visiblePinCount: number): MapBanner {
+export function mapBanner(stopCount: number, visiblePinCount: number, discoveryCount = 0): MapBanner {
   if (stopCount > 0) return 'route';
   if (visiblePinCount === 1) return 'proposal';
   if (visiblePinCount > 1) return 'list';
+  if (discoveryCount > 0) return 'discovery';
   return 'none';
 }
 

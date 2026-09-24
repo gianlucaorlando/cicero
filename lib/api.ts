@@ -1,5 +1,5 @@
 import type { Profile } from '@/lib/profile';
-import type { ChatRequest, ChatResponse, LatLng, SavedRoute, Stop } from '@/lib/types';
+import type { ChatRequest, ChatResponse, Discovery, LatLng, SavedRoute, Stop } from '@/lib/types';
 
 export class ApiError extends Error {
   constructor(readonly status: number, readonly code: string, message?: string) {
@@ -31,6 +31,10 @@ function jsonInit(method: string, body: unknown, headers: Headers = {}, signal?:
 export const api = {
   chat(payload: ChatRequest, headers: Headers = {}) {
     return request<ChatResponse>('/api/chat', jsonInit('POST', payload, headers));
+  },
+
+  discover(origin: LatLng, signal?: AbortSignal) {
+    return request<Discovery>(`/api/discover?lat=${origin.lat.toFixed(5)}&lng=${origin.lng.toFixed(5)}`, { signal });
   },
 
   profile: {

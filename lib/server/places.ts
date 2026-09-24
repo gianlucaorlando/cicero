@@ -41,6 +41,7 @@ type GooglePlacePayload = {
   formattedAddress?: string;
   location?: { latitude?: number; longitude?: number };
   primaryType?: string;
+  types?: string[];
   businessStatus?: string;
   googleMapsUri?: string;
   rating?: number;
@@ -124,6 +125,37 @@ export async function searchPlaces(input: SearchPlacesInput): Promise<PlaceCandi
     ...place,
     tripadvisor: tripadvisorApiKey ? await fetchTripadvisorSummary(place, tripadvisorApiKey) : null,
   })));
+}
+
+const HUB_FIELDS = ['places.id', 'places.displayName', 'places.types', 'places.location'].join(',');
+
+export type TransitHub = { name: string; type: 'train_station' | 'airport'; distanceMeters: number };
+
+/** Train stations and airports near the origin, nearest first. */
+export async function findTransitHubs(origin: LatLng, radiusMeters = 1500): Promise<TransitHub[]> {
+  const apiKey = requireApiKey();
+  const response = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': HUB_FIELDS },
+    body: JSON.stringify({
+      includedTypes: ['train_station', 'airport'],
+      maxResultCount: 5,
+      rankPreference: 'DISTANCE',
+      languageCode: 'it',
+      locationRestriction: { circle: { center: { latitude: origin.lat, longitude: origin.lng }, radius: radiusMeters } },
+    }),
+  });
+  const data = await response.json() as { places?: GooglePlacePayload[]; error?: { message?: string } };
+  if (!response.ok) {
+    throw new PlacesError('PLACES_UPSTREAM_ERROR', data.error?.message || 'Places non disponibile.', response.status);
+  }
+  return (data.places || [])
+    .filter((place) => place.displayName?.text && place.location?.latitude != null && place.location?.longitude != null)
+    .map((place) => ({
+      name: place.displayName!.text!,
+      type: place.types?.includes('airport') ? 'airport' as const : 'train_station' as const,
+      distanceMeters: distanceMeters(origin, { lat: place.location!.latitude!, lng: place.location!.longitude! }),
+    }));
 }
 
 export async function getPlaceDetails(id: string): Promise<PlaceDetails> {

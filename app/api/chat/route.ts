@@ -8,7 +8,7 @@ import { errorResponse, json, readJson, textValue } from '@/lib/server/http';
 import { isValidPlaceId } from '@/lib/server/places';
 import { chatRateLimitRules, clientKey, enforceRateLimits } from '@/lib/server/rate-limit';
 import { normalizeStops } from '@/lib/server/stops';
-import type { ChatRequest, PlaceCandidate } from '@/lib/types';
+import type { AreaInfo, AreaKind, ChatRequest, DiscoveryPlace, PlaceCandidate } from '@/lib/types';
 
 const MAX_MESSAGES = 40;
 const MAX_MESSAGE_LENGTH = 2000;
@@ -33,6 +33,22 @@ function normalizeCandidate(value: unknown): PlaceCandidate | null {
     distanceMeters: typeof candidate.distanceMeters === 'number' ? candidate.distanceMeters : 0,
     tripadvisor: null,
   };
+}
+
+function normalizeDiscovery(value: unknown): DiscoveryPlace | null {
+  const candidate = normalizeCandidate(value);
+  const category = value && typeof value === 'object' ? (value as Record<string, unknown>).category : null;
+  if (!candidate || (category !== 'sight' && category !== 'food')) return null;
+  return { ...candidate, category };
+}
+
+const AREA_KINDS: AreaKind[] = ['transit', 'touristic', 'transit-touristic', 'ordinary'];
+
+function normalizeArea(value: unknown): AreaInfo | null {
+  if (!value || typeof value !== 'object') return null;
+  const area = value as Record<string, unknown>;
+  if (!AREA_KINDS.includes(area.kind as AreaKind)) return null;
+  return { kind: area.kind as AreaKind, hub: textValue(area.hub, 120) || null };
 }
 
 function normalizeRequest(payload: unknown): ChatRequest | null {
@@ -65,6 +81,10 @@ function normalizeRequest(payload: unknown): ChatRequest | null {
         : [],
       proposing: context.proposing === true,
       profile: normalizeProfile(context.profile),
+      discovery: Array.isArray(context.discovery)
+        ? context.discovery.slice(0, 12).map(normalizeDiscovery).filter((place): place is DiscoveryPlace => place !== null)
+        : [],
+      area: normalizeArea(context.area),
     },
   };
 }

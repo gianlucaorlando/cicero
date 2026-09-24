@@ -1,7 +1,7 @@
 import { preferenceCategories, type Profile } from '@/lib/profile';
 import { humanDistance } from '@/lib/geo';
 import { candidateLetter } from '@/lib/format';
-import type { ChatContext } from '@/lib/types';
+import type { AreaInfo, AreaKind, ChatContext } from '@/lib/types';
 
 /**
  * Stable persona and rules. Keep this block free of per-request data so the
@@ -13,6 +13,7 @@ Il tuo stile è proporre, non interrogare. L'utente deve poter andare avanti dic
 
 Come conduci il dialogo:
 - Alcuni messaggi dell'utente iniziano con "Evento:": li genera l'app (apertura della pagina, cambio del punto di partenza) e l'utente non li vede. Non citarli e non ringraziare: agisci come se fosse la tua prima mossa, saluta in mezza frase se è l'apertura e proponi subito qualcosa di adatto a ora, meteo, luogo e profilo.
+- All'apertura la mappa mostra già alcuni punti di interesse vicini, un mix di monumenti e posti per mangiare, elencati nel contesto con il loro place_id. Proponi uno di questi con propose_stop, senza una nuova ricerca. Per scegliere combina i criteri, perché uno non esclude l'altro: vicino a una stazione o a un aeroporto privilegia un posto per mangiare; in centro o in una zona turistica privilegia un monumento o un'attrazione; all'ora di pranzo o di cena il cibo pesa di più ovunque. Se ti trovi vicino a una stazione o a un aeroporto, dillo in mezza frase.
 - Fai tu la prima mossa. Con poche informazioni (tempo a disposizione, ora, meteo, profilo) scegli una tappa concreta e proponila con lo strumento propose_stop: un solo luogo, verificato, con una motivazione di una frase (perché proprio quello, per lui, adesso). Poi chiedi conferma in modo naturale ("Ti va?", "Partiamo da qui?").
 - Non fare domande aperte se puoi proporre un default. Invece di "che cucina preferisci?" proponi: "Per pranzo pensavo a una trattoria tipica qui vicino: ti va, o preferisci altro?". Chiedi qualcosa solo quando senza quell'informazione non puoi proporre nulla di sensato (per esempio quanto tempo ha), e una domanda alla volta.
 - Se l'utente accetta, aggiungi la tappa con add_stops e nello stesso turno proponi già il passo successivo, coerente con il tempo che resta (dopo un museo un caffè, verso l'ora di pranzo un posto dove mangiare, a fine giornata chiedi se basta così). Aggiungere consuma i risultati della ricerca precedente: per la nuova proposta fai prima una nuova search_places, di norma vicino all'ultima tappa. Se il tempo è finito, dillo e chiudi con una frase.
@@ -46,6 +47,18 @@ function describeProfile(profile: Profile) {
   return lines.length ? lines.join('\n') : 'nessuna preferenza salvata';
 }
 
+const AREA_LABELS: Record<AreaKind, string> = {
+  transit: 'vicino a una stazione o a un aeroporto',
+  touristic: 'centro o zona turistica',
+  'transit-touristic': 'vicino a una stazione o a un aeroporto, in una zona turistica',
+  ordinary: 'zona non particolarmente turistica',
+};
+
+function describeArea(area: AreaInfo | null | undefined) {
+  if (!area) return 'non nota';
+  return area.hub ? `${AREA_LABELS[area.kind]} (${area.hub})` : AREA_LABELS[area.kind];
+}
+
 /** Volatile per-turn state. Rendered after the cached prefix. */
 export function contextPrompt(context: ChatContext) {
   const itinerary = context.itinerary.length
@@ -54,6 +67,9 @@ export function contextPrompt(context: ChatContext) {
   const candidates = context.candidates.length
     ? context.candidates.map((candidate, index) => `${candidateLetter(index)}. [place_id ${candidate.id}] ${candidate.name} · ${humanDistance(candidate.distanceMeters)} · ${candidate.primaryType}`).join('\n')
     : 'nessun risultato in sospeso';
+  const discovery = context.discovery?.length
+    ? context.discovery.map((place) => `- [place_id ${place.id}] ${place.name} · ${place.category === 'food' ? 'per mangiare' : 'monumento o attrazione'} · ${humanDistance(place.distanceMeters)}`).join('\n')
+    : 'nessuno';
   const proposalState = context.proposing && context.candidates[0]
     ? `Proposta in attesa di risposta: ${context.candidates[0].name} (A). Le altre lettere sono le alternative già trovate.`
     : 'Nessuna proposta in attesa.';
@@ -61,6 +77,7 @@ export function contextPrompt(context: ChatContext) {
   return `Stato attuale
 Città: ${context.city}
 Punto di partenza: ${context.locationLabel} (${context.origin.lat.toFixed(5)}, ${context.origin.lng.toFixed(5)})
+Zona: ${describeArea(context.area)}
 Ora locale: ${context.localTime}
 Meteo: ${context.weather}
 
@@ -69,6 +86,9 @@ ${describeProfile(context.profile)}
 
 Itinerario (in ordine, con id)
 ${itinerary}
+
+Punti di interesse già sulla mappa
+${discovery}
 
 Risultati dell'ultima ricerca
 ${candidates}

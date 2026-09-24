@@ -3,21 +3,26 @@
 import type { SubmitEvent } from 'react';
 import { Bookmark, ChevronRight, CloudRain, LocateFixed, MapPin, Move, Navigation, Route, Search, Sun, UserRound } from 'lucide-react';
 
-import { MapPicker } from '@/components/map-picker';
+import { MapPicker, type MapPopup } from '@/components/map-picker';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { pluralStops } from '@/lib/format';
 import { mapBanner } from '@/lib/route';
-import type { LatLng, PlaceCandidate, Stop } from '@/lib/types';
+import type { DiscoveryPlace, LatLng, PlaceCandidate, Stop } from '@/lib/types';
 
 type Props = {
   coords: LatLng;
   onMovePin: (coords: LatLng) => void;
   stops: Stop[];
   candidates: PlaceCandidate[];
-  /** Tapping a pin opens that place's sheet; choosing happens there, never on a stray tap. */
+  /** Tapping a pin opens that place's popup; choosing happens there, never on a stray tap. */
   onOpenCandidate: (candidate: PlaceCandidate) => void;
+  /** Points of interest shown since the app opened, not yet chosen or proposed. */
+  discovery: DiscoveryPlace[];
+  onOpenDiscovery: (place: DiscoveryPlace) => void;
+  popup: MapPopup;
+  onPopupClose: () => void;
   focusToken: number;
   city: string;
   locationLabel: string;
@@ -42,6 +47,10 @@ export function MapStage({
   stops,
   candidates,
   onOpenCandidate,
+  discovery,
+  onOpenDiscovery,
+  popup,
+  onPopupClose,
   focusToken,
   city,
   locationLabel,
@@ -59,7 +68,9 @@ export function MapStage({
   onOpenProfile,
   onMapReady,
 }: Props) {
-  const banner = mapBanner(stops.length, candidates.length);
+  const banner = mapBanner(stops.length, candidates.length, discovery.length);
+  const sights = discovery.filter((place) => place.category === 'sight').length;
+  const food = discovery.length - sights;
   return (
     <section className={`map-stage ${stops.length ? 'has-route' : ''} ${candidates.length ? 'has-candidates' : ''}`} aria-label="Mappa dell’itinerario">
       <MapPicker
@@ -71,6 +82,13 @@ export function MapStage({
           const candidate = candidates.find((place) => place.id === candidateId);
           if (candidate) onOpenCandidate(candidate);
         }}
+        discovery={discovery}
+        onOpenDiscovery={(placeId) => {
+          const place = discovery.find((item) => item.id === placeId);
+          if (place) onOpenDiscovery(place);
+        }}
+        popup={popup}
+        onPopupClose={onPopupClose}
         focusToken={focusToken}
         onReady={onMapReady}
       />
@@ -116,6 +134,15 @@ export function MapStage({
         <span className="map-search-hint"><Move /> Tieni premuto e trascina il pin</span>
       </form>
 
+      {banner === 'discovery' && (
+        <div className="candidate-map-summary discovery-summary">
+          <MapPin />
+          <div>
+            <strong>Qui intorno: {sights} da vedere, {food} per mangiare</strong>
+            <span>Tocca un’icona per le informazioni</span>
+          </div>
+        </div>
+      )}
       {banner === 'proposal' || banner === 'list' ? (
         <div className="candidate-map-summary">
           <MapPin />
