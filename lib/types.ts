@@ -86,6 +86,8 @@ export type SavedRoute = {
   stops: Stop[];
   createdAt: string;
   updatedAt: string;
+  /** Kept only on this device, because the server could not tell who the user is. */
+  device?: boolean;
 };
 
 export type ChatRole = 'assistant' | 'user';

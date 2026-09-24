@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { applyActions, emptyPlan } from '@/lib/conversation-state';
+import { applyActions, emptyPlan, restoreStop } from '@/lib/conversation-state';
 import type { PlaceCandidate, Stop } from '@/lib/types';
 
 const candidate = (id: string): PlaceCandidate => ({
@@ -95,5 +95,30 @@ describe('applyActions', () => {
     expect(next.itinerary.map((s) => s.id)).toEqual(['a']);
     expect(next.proposal?.candidate.id).toBe('b');
     expect(next.suggestions).toHaveLength(2);
+  });
+});
+
+describe('restoreStop', () => {
+  const ids = (stops: Stop[]) => stops.map((s) => s.id);
+
+  it('puts the stop back exactly where it was', () => {
+    expect(ids(restoreStop([stop('a'), stop('c')], { stop: stop('b'), index: 1 }))).toEqual(['a', 'b', 'c']);
+    expect(ids(restoreStop([stop('b'), stop('c')], { stop: stop('a'), index: 0 }))).toEqual(['a', 'b', 'c']);
+  });
+
+  it('restores the last stop of an emptied route', () => {
+    expect(ids(restoreStop([], { stop: stop('a'), index: 0 }))).toEqual(['a']);
+  });
+
+  it('clamps an index the route has since outgrown or lost', () => {
+    expect(ids(restoreStop([stop('a')], { stop: stop('z'), index: 5 }))).toEqual(['a', 'z']);
+    expect(ids(restoreStop([stop('a')], { stop: stop('z'), index: -2 }))).toEqual(['z', 'a']);
+  });
+
+  it('never duplicates a place that is already back in the route', () => {
+    const route = [stop('a'), stop('b')];
+    expect(restoreStop(route, { stop: stop('b'), index: 0 })).toBe(route);
+    const sameplace = { ...stop('other-id'), placeId: 'a' };
+    expect(restoreStop(route, { stop: sameplace, index: 0 })).toBe(route);
   });
 });

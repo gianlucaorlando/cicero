@@ -706,6 +706,22 @@ h1 {
   color: #9a654f !important;
 }
 .stop-remove svg { width: 15px; height: 15px; }
+.itinerary-card li.stop-removed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  margin: 2px 0 8px;
+  padding: 4px 4px 4px 12px;
+  border: 1px dashed #dcc6b3;
+  border-radius: 12px;
+  background: #fff3e8;
+}
+.itinerary-card li.stop-removed::after { content: none; }
+.itinerary-card li.stop-removed > output { color: #7c6c60; font-size: 11px; }
+.itinerary-card li.stop-removed strong { font-size: 11px; }
+.itinerary-card li.stop-removed button { min-height: 36px; color: #8f4229; font-weight: 700; }
 .stop-remove:active { background: #f3dfd3 !important; color: #8d3f28 !important; }
 .stop-remove:focus-visible { outline: 3px solid rgba(212,81,38,.22); outline-offset: 1px; }
 .data-warning { display: flex; gap: 6px; margin: 2px 0 0 !important; padding-top: 9px; border-top: 1px solid #eadfce; color: #8a796c; font-size: 10px !important; line-height: 1.35 !important; }
@@ -878,7 +894,7 @@ h1 {
 .route-detail-list li {
   position: relative;
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) 32px;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
   gap: 10px;
   min-height: 72px;
   padding: 9px 0;
@@ -914,8 +930,55 @@ h1 {
 .route-detail-list li > div strong { margin-top: 2px; color: #403128; font-size: 13px; line-height: 1.25; }
 .route-detail-list li > div span { margin-top: 2px; overflow: hidden; color: #7f7166; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .route-detail-list li > div em { margin-top: 3px; color: #99897d; font-size: 9px; font-style: normal; }
-.route-detail-list li > a { display: grid; place-items: center; align-self: center; width: 32px; height: 32px; border-radius: 11px; color: #a34728; }
-.route-detail-list li > a svg { width: 14px; }
+/* The generic `li > div` rule above stacks its children: the icon pair needs its own, more specific layout. */
+.route-detail-list li > .route-detail-stop-actions {
+  display: grid;
+  grid-template-columns: 40px 40px;
+  align-items: center;
+  align-self: start;
+  gap: 2px;
+  margin-top: -4px; /* centres the 40px icons on the 32px stop marker */
+}
+.route-detail-stop-actions a,
+.route-detail-remove,
+.route-detail-action-slot { display: grid; place-items: center; width: 40px; height: 40px; margin: 0; padding: 0; border: 0; border-radius: 12px; background: none; color: #9a654f; cursor: pointer; }
+.route-detail-stop-actions svg { width: 16px; height: 16px; }
+.route-detail-stop-actions a:active,
+.route-detail-remove:active { background: #f3dfd3; color: #8d3f28; }
+.route-detail-stop-actions a:focus-visible,
+.route-detail-remove:focus-visible { outline: 3px solid rgba(212,81,38,.22); outline-offset: 1px; }
+.route-detail-list li.route-detail-removed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 52px;
+  margin: 4px 0;
+  padding: 6px 6px 6px 14px;
+  border: 1px dashed #dcc6b3;
+  border-radius: 14px;
+  background: #fff7ee;
+  color: #6f5f53;
+  font-size: 12px;
+}
+.route-detail-list li.route-detail-removed::after { content: none; }
+.route-detail-removed strong { color: #403128; }
+.route-detail-removed button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 12px;
+  background: #f6e3d6;
+  color: #8f4229;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.route-detail-removed button svg { width: 14px; height: 14px; }
 .route-actions { display: flex; flex-direction: column; gap: 8px; padding: 10px 16px 0; border-top: 1px solid #eadfd3; }
 .route-save-button {
   display: flex;

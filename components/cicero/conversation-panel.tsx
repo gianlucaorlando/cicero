@@ -8,6 +8,7 @@ import { PlacesCard } from '@/components/cicero/places-card';
 import { ProposalCard } from '@/components/cicero/proposal-card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import type { StopRemoval } from '@/lib/conversation-state';
 import type { ChatMessage, LatLng, PlaceCandidate, Proposal, Stop } from '@/lib/types';
 
 type Props = {
@@ -31,6 +32,8 @@ type Props = {
   onSelectCandidate: (candidate: PlaceCandidate) => void;
   itinerary: Stop[];
   onRemoveStop: (stopId: string) => void;
+  stopRemoval: StopRemoval | null;
+  onUndoRemoveStop: () => void;
   suggestions: string[];
   onSuggestion: (text: string) => void;
   input: string;
@@ -71,6 +74,8 @@ export function ConversationPanel({
   onSelectCandidate,
   itinerary,
   onRemoveStop,
+  stopRemoval,
+  onUndoRemoveStop,
   suggestions,
   onSuggestion,
   input,
@@ -112,7 +117,9 @@ export function ConversationPanel({
           </article>
         ))}
 
-        {itinerary.length > 0 && <ItineraryCard origin={origin} stops={itinerary} onRemove={onRemoveStop} />}
+        {(itinerary.length > 0 || stopRemoval) && (
+          <ItineraryCard origin={origin} stops={itinerary} onRemove={onRemoveStop} removed={stopRemoval} onUndo={onUndoRemoveStop} />
+        )}
 
         {proposal ? (
           <>

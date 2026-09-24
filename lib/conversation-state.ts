@@ -18,6 +18,18 @@ export type PlanState = {
 
 export const emptyPlan: PlanState = { itinerary: [], candidates: [], listed: false, proposal: null, suggestions: [] };
 
+/** A stop the user just took out by hand, and where it was, so a mistaken tap can be undone. */
+export type StopRemoval = { stop: Stop; index: number };
+
+/** Puts a removed stop back where it was, unless the same place is already in the route again. */
+export function restoreStop(itinerary: Stop[], removal: StopRemoval): Stop[] {
+  const { stop, index } = removal;
+  if (itinerary.some((item) => item.id === stop.id || (stop.placeId && item.placeId === stop.placeId))) return itinerary;
+  const next = [...itinerary];
+  next.splice(Math.min(Math.max(index, 0), next.length), 0, stop);
+  return next;
+}
+
 /**
  * Applies agent actions in order. A proposal or a search replaces what was
  * shown before; adding stops consumes it.

@@ -22,16 +22,16 @@ type Props = {
 };
 
 export function SavedRoutesSheet({ open, onOpenChange, authStatus, status, routes, deletingId, onLogin, onRetry, onLoad, onDelete }: Props) {
+  const login = authStatus === 'anonymous' && (
+    <section className="saved-routes-login">
+      <span className="auth-avatar"><Bookmark /></span>
+      <div><strong>Accedi per salvare i percorsi</strong><small>Li ritroverai su tutti i tuoi dispositivi.</small></div>
+      <Button type="button" size="sm" onClick={onLogin}><LogIn /> Accedi</Button>
+    </section>
+  );
+
   let body;
-  if (authStatus === 'anonymous') {
-    body = (
-      <section className="saved-routes-login">
-        <span className="auth-avatar"><Bookmark /></span>
-        <div><strong>Accedi per salvare i percorsi</strong><small>Li ritroverai su tutti i tuoi dispositivi.</small></div>
-        <Button type="button" size="sm" onClick={onLogin}><LogIn /> Accedi</Button>
-      </section>
-    );
-  } else if (status === 'loading') {
+  if (status === 'loading') {
     body = <p className="saved-routes-state"><LocateFixed className="spin" /> Carico i tuoi percorsi…</p>;
   } else if (status === 'error') {
     body = <button className="saved-routes-retry" type="button" onClick={onRetry}>Non riesco a caricarli. Tocca per riprovare.</button>;
@@ -43,7 +43,7 @@ export function SavedRoutesSheet({ open, onOpenChange, authStatus, status, route
             <button type="button" onClick={() => onLoad(route)}>
               <span className="saved-route-icon"><Route /></span>
               <span className="saved-route-copy">
-                <small>{savedRouteDate(route.updatedAt)}</small>
+                <small>{savedRouteDate(route.updatedAt)}{route.device ? ' · su questo dispositivo' : ''}</small>
                 <strong>{route.name}</strong>
                 <span>{route.locationLabel} · {pluralStops(route.stops.length)}</span>
               </span>
@@ -56,7 +56,7 @@ export function SavedRoutesSheet({ open, onOpenChange, authStatus, status, route
         ))}
       </div>
     );
-  } else {
+  } else if (!login) {
     body = <div className="saved-routes-empty"><Bookmark /><strong>Nessun percorso salvato</strong><span>Apri il riepilogo di un itinerario e tocca “Salva percorso”.</span></div>;
   }
 
@@ -68,6 +68,7 @@ export function SavedRoutesSheet({ open, onOpenChange, authStatus, status, route
           <SheetTitle>Percorsi salvati</SheetTitle>
           <SheetDescription>Riapri un itinerario e ritrova le tappe sulla mappa.</SheetDescription>
         </SheetHeader>
+        {login}
         {body}
       </SheetContent>
     </Sheet>

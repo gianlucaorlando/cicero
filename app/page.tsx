@@ -19,6 +19,7 @@ import { useProfileSync } from '@/hooks/use-profile-sync';
 import { useSavedRoutes } from '@/hooks/use-saved-routes';
 import { useSpeechInput } from '@/hooks/use-speech-input';
 import { useWeather } from '@/hooks/use-weather';
+import type { StopRemoval } from '@/lib/conversation-state';
 import { candidateLetter, localTimeLabel, pluralStops } from '@/lib/format';
 import { itinerarySignature } from '@/lib/geo';
 import type { PreferenceCategory, Profile } from '@/lib/profile';
@@ -30,6 +31,9 @@ function hideSplash() {
   splash.classList.add('is-hidden');
   window.setTimeout(() => splash.remove(), 400);
 }
+
+/** How long "Annulla" stays available after the user takes a stop out of the route. */
+const UNDO_REMOVAL_MS = 8000;
 
 const footerNotes: Record<ChatMode, string> = {
   unknown: 'Claude + Google Places · nessun luogo inventato',
@@ -66,6 +70,8 @@ export default function Home() {
   const [popupPlaceId, setPopupPlaceId] = useState<string | null>(null);
   /** While the test panel runs it works on this profile, so the real one is never written. */
   const [testProfile, setTestProfile] = useState<Profile | null>(null);
+  /** The stop the user just took out by hand, kept for a few seconds so a mistaken tap can be undone. */
+  const [removal, setRemoval] = useState<StopRemoval | null>(null);
 
   const speech = useSpeechInput(useCallback((transcript: string) => setInput(transcript), []));
 
@@ -103,6 +109,30 @@ export default function Home() {
     return listed ? candidates : [];
   }, [alternativesOpen, candidates, listed, proposal]);
   const { city, locationLabel, coords } = location;
+
+  // A route emptied while its sheet was open closes the sheet for good, instead of
+  // leaving it armed to pop open by itself with the next stop.
+  if (routeOpen && !itinerary.length && !removal) setRouteOpen(false);
+
+  // "Annulla" is a safety net for a mistaken tap, not a history: it lapses after a few seconds.
+  useEffect(() => {
+    if (!removal) return;
+    const timeout = window.setTimeout(() => setRemoval(null), UNDO_REMOVAL_MS);
+    return () => window.clearTimeout(timeout);
+  }, [removal]);
+
+  function removeStop(stopId: string) {
+    const index = itinerary.findIndex((stop) => stop.id === stopId);
+    if (index < 0) return;
+    setRemoval({ stop: itinerary[index], index });
+    conversation.removeStop(stopId);
+  }
+
+  function undoRemoval() {
+    if (!removal) return;
+    conversation.restoreStop(removal);
+    setRemoval(null);
+  }
 
   /** Points of interest still worth a pin: not already a stop, and not already shown as a proposal. */
   const discoveryPins = useMemo(() => discovery.places.filter((place) => !itinerary.some((stop) => stop.placeId === place.id)
@@ -292,7 +322,12 @@ export default function Home() {
       stops: itinerary,
       signature: currentSignature,
     });
-    if (route) conversation.notify('Percorso salvato nel tuo profilo. Potrai riaprirlo dalla raccolta in alto.', 'Itinerario sincronizzato');
+    if (!route) return;
+    if (route.device) {
+      conversation.notify('Percorso salvato su questo dispositivo. Lo ritrovi nella raccolta in alto.', 'Salvato in locale');
+    } else {
+      conversation.notify('Percorso salvato nel tuo profilo. Potrai riaprirlo dalla raccolta in alto.', 'Itinerario sincronizzato');
+    }
   }
 
   function loadSavedRoute(route: SavedRoute) {
@@ -357,7 +392,9 @@ export default function Home() {
         listed={listed}
         onSelectCandidate={selectCandidate}
         itinerary={itinerary}
-        onRemoveStop={conversation.removeStop}
+        onRemoveStop={removeStop}
+        stopRemoval={removal}
+        onUndoRemoveStop={undoRemoval}
         suggestions={suggestions}
         onSuggestion={(text) => void ask(text)}
         input={input}
@@ -386,6 +423,9 @@ export default function Home() {
         saveStatus={savedRoutes.saveStatus}
         authStatus={auth.status}
         onSave={() => void saveCurrentRoute()}
+        onRemoveStop={removeStop}
+        removed={removal}
+        onUndo={undoRemoval}
       />
 
       <SavedRoutesSheet
