@@ -112,7 +112,7 @@ export default function Home() {
   const ask = useCallback((text: string) => conversation.send(text, buildContext()), [buildContext, conversation]);
 
   // App-generated events (opening move, relocation) wait for the weather of the point they describe,
-  // with a short deadline so a slow forecast never blocks Cicero's first move.
+  // with a short deadline so a slow forecast never blocks Cicerone's first move.
   const [pendingEvent, setPendingEvent] = useState<{ kind: 'opening' } | { kind: 'relocation'; relocation: Relocation } | null>(null);
   const kickedOff = useRef(false);
 
@@ -170,6 +170,7 @@ export default function Home() {
   }
 
   function selectCandidate(candidate: PlaceCandidate) {
+    setDetailPlace(null);
     if (proposal && candidate.id === proposal.candidate.id) {
       void ask('Sì, aggiungila.');
       return;
@@ -178,6 +179,8 @@ export default function Home() {
     const letter = index >= 0 ? ` (${candidateLetter(index)})` : '';
     void ask(proposal ? `Preferisco ${candidate.name}${letter}: aggiungi quella.` : `Aggiungi ${candidate.name}${letter}.`);
   }
+
+  const detailIsProposal = detailPlace !== null && proposal !== null && detailPlace.id === proposal.candidate.id;
 
   function acceptProposal() {
     setDetailPlace(null);
@@ -251,8 +254,7 @@ export default function Home() {
         onMovePin={location.movePin}
         stops={itinerary}
         candidates={visibleCandidates}
-        onSelectCandidate={selectCandidate}
-        selectionDisabled={conversation.thinking}
+        onOpenCandidate={setDetailPlace}
         focusToken={routeFocusToken}
         city={city}
         locationLabel={locationLabel}
@@ -305,10 +307,14 @@ export default function Home() {
 
       <PlaceSheet
         place={detailPlace}
-        reason={detailPlace && proposal && detailPlace.id === proposal.candidate.id ? proposal.reason : undefined}
-        actions={detailPlace && proposal && detailPlace.id === proposal.candidate.id
-          ? { onAccept: acceptProposal, onDecline: declineProposal }
-          : undefined}
+        reason={detailIsProposal ? proposal?.reason : undefined}
+        actions={detailPlace === null
+          ? undefined
+          : detailIsProposal
+            ? { acceptLabel: 'Sì, aggiungila', onAccept: acceptProposal, onDecline: declineProposal }
+            : candidates.some((item) => item.id === detailPlace.id)
+              ? { acceptLabel: 'Scegli questo', onAccept: () => selectCandidate(detailPlace) }
+              : undefined}
         busy={conversation.thinking}
         onOpenChange={(open) => { if (!open) setDetailPlace(null); }}
       />

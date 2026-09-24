@@ -1,4 +1,4 @@
-# Cicero — Documento di prodotto
+# Cicerone — Documento di prodotto
 
 _Versione 1.0 · 17 settembre 2026 · basato sul codice in `/Users/GOrlando/atex/ai/cicero` (prompt.ts, tools.ts, types.ts, places.ts, api.ts, use-conversation.ts, app/page.tsx, components/cicero/*)_
 
@@ -6,7 +6,7 @@ _Versione 1.0 · 17 settembre 2026 · basato sul codice in `/Users/GOrlando/atex
 
 ## 1. Visione in tre righe
 
-Cicero è la voce che parla per prima quando scendi dal treno in una città che non conosci e non sai nemmeno da che parte girarti.
+Cicerone è la voce che parla per prima quando scendi dal treno in una città che non conosci e non sai nemmeno da che parte girarti.
 Non ti chiede cosa vuoi fare: ti dice dove sei, cosa è aperto adesso, e ti propone una sola mossa concreta a cui rispondere con un tocco.
 Ogni luogo che nomina esiste, è verificato ed è aperto: quello che non sa, te lo dice.
 
@@ -14,7 +14,7 @@ Ogni luogo che nomina esiste, è verificato ed è aperto: quello che non sa, te 
 
 ## 2. Principi di prodotto
 
-1. **Propone, non interroga.** Il costo cognitivo di una domanda aperta a un utente spaesato è altissimo. Cicero sceglie un default e chiede solo conferma; una domanda si fa solo quando senza quella risposta non esiste alcuna proposta sensata.
+1. **Propone, non interroga.** Il costo cognitivo di una domanda aperta a un utente spaesato è altissimo. Cicerone sceglie un default e chiede solo conferma; una domanda si fa solo quando senza quella risposta non esiste alcuna proposta sensata.
 2. **Mai inventare.** Luoghi, orari, prezzi e valutazioni arrivano solo dagli strumenti. La conoscenza del modello è ammessa per usanze e consigli generali, ma va etichettata come tale e non può mai indossare il badge "verificato".
 3. **Il primo minuto conta.** La sessione si gioca prima che l'utente scriva una parola: se i primi trenta secondi orientano, rassicurano e chiudono con una proposta accettabile, il resto della giornata segue. Ogni funzionalità si valuta prima di tutto su cosa aggiunge o toglie a quei trenta secondi.
 4. **Una catena di sì, non una lista da leggere.** Il piano si costruisce una tappa alla volta. Quando servono più cose pratiche, diventano bottoni che rilanciano la richiesta, mai un elenco in chat (la chat non interpreta markdown, e comunque un elenco è lavoro scaricato sull'utente).
@@ -28,7 +28,7 @@ Ogni luogo che nomina esiste, è verificato ed è aperto: quello che non sa, te 
 
 ### Cosa cambia rispetto a oggi
 
-Oggi `hooks/use-conversation.ts` manda un unico `OPENING_EVENT` generico e Cicero apre proponendo una tappa qualsiasi adatta a ora e meteo. Funziona per chi è già in città con due ore libere; è sbagliato per chi è appena arrivato con una valigia in mano. Il briefing di arrivo è una **variante del turno di apertura**, non una schermata nuova: stesso meccanismo di evento nascosto, registro diverso.
+Oggi `hooks/use-conversation.ts` manda un unico `OPENING_EVENT` generico e Cicerone apre proponendo una tappa qualsiasi adatta a ora e meteo. Funziona per chi è già in città con due ore libere; è sbagliato per chi è appena arrivato con una valigia in mano. Il briefing di arrivo è una **variante del turno di apertura**, non una schermata nuova: stesso meccanismo di evento nascosto, registro diverso.
 
 ### L'ordine delle informazioni (non negoziabile)
 
@@ -50,7 +50,7 @@ Oggi `hooks/use-conversation.ts` manda un unico `OPENING_EVENT` generico e Cicer
 
 ### Esempio concreto — Milano Centrale, martedì 10:40, pioggia leggera
 
-**Cicero (messaggio in chat):**
+**Cicerone (messaggio in chat):**
 
 > Benvenuto a Milano: sei dentro Centrale, il Duomo è a venti minuti di metro e fuori pioviggina fino alle due, quindi oggi giochiamo al coperto. Prima cosa, togliamoci la valigia dalle mani. Qui sotto ti ho messo le tre cose da fare nei prossimi dieci minuti, in ordine: partiamo dal deposito bagagli a 120 metri, aperto fino a mezzanotte, così lo riprendi anche stasera tardi. Ti va?
 
@@ -96,7 +96,7 @@ Sequenza consigliata: `day-context` per primo (è il contesto da cui gli altri p
 | `fixed-anchor-stop` | Ancora fissa | Il treno delle 20:10 come tappa bloccata che vincola il piano e rifiuta con motivazione le proposte che non ci stanno | famiglia, backpacker, business, seranotte | Places per geocodificare l'ancora; l'orario lo dà l'utente | 2 g (ottimistica) | 6 / 6 / 9 → **7,0** |
 | `home-base` | Dove dormi | La base del viaggio verificata su Places diventa il centro delle ricerche serali e del rientro, con il telefono a un tocco | stazione, business, backpacker, seranotte | Places details (+`nationalPhoneNumber`), Nominatim, distanza locale | 3 g | 8 / 6 / 8 → **7,3** |
 | `trip-constraints` | Vincoli della giornata | Barra di chip sempre visibile con i vincoli non negoziabili, correggibili in due tocchi; profilo D1 esteso | famiglia, domenica, backpacker | Dichiarazioni utente + profilo D1 | 3 g | 5 / 7 / 9 → **7,0** |
-| `local-food-picks` | Mangiare dove mangiano i locali | All'ora giusta Cicero propone di iniziativa, con punteggio conservativo anti-trappola | tutte e sei | Places rating/priceLevel/orari, Tripadvisor dove configurato | 2 g | 7 / 7 / 6 → **6,7** |
+| `local-food-picks` | Mangiare dove mangiano i locali | All'ora giusta Cicerone propone di iniziativa, con punteggio conservativo anti-trappola | tutte e sei | Places rating/priceLevel/orari, Tripadvisor dove configurato | 2 g | 7 / 7 / 6 → **6,7** |
 | `landmark-orientation` | Bussola | Distanza a piedi dai due-tre riferimenti che tutti conoscono, prima di proporre | business, backpacker | Places searchText + haversine con fattore urbano | 2 g | 9 / 6 / 5 → **6,7** |
 | `area-pulse-safety` | Com'è la zona adesso | Giudizio in due frasi ancorato al conteggio dei locali aperti entro 300 m, mai a statistiche inventate | seranotte, stazione, backpacker | Places `openNow` come conteggio, Nominatim per via e quartiere | 1,5 g | 7 / 5 / 8 → **6,7** |
 | `language-and-phrasebook` | Lingua e frasario | Correzione del bug per cui il primo turno scivola in italiano, più la scheda di frasi da mostrare | stazione, seranotte, famiglia | `navigator.language`, conoscenza del modello, SpeechSynthesis | 2 g | 8 / 7 / 2 → **5,7** |
@@ -134,11 +134,11 @@ Sequenza consigliata: `day-context` per primo (è il contesto da cui gli altri p
 | **Farmacia di turno** come dato | Nessuna fonte gratuita affidabile | Ciò che Places dà per aperto adesso, dicendolo, e rimando alla croce verde |
 | **Prezzi dei biglietti dei musei** | Non sono su Places e il modello li inventerebbe con sicurezza | Apertura del `websiteUri` con l'etichetta "sito e biglietti" |
 | **Eventi della serata** (concerti, mostre temporanee) | Nessuna API disponibile | Luoghi di ritrovo, non eventi |
-| **Cicero che chiama o scrive** al posto dell'utente | Nessuna capacità di telefonia o messaggistica | Numero e frase da dire |
+| **Cicerone che chiama o scrive** al posto dell'utente | Nessuna capacità di telefonia o messaggistica | Numero e frase da dire |
 | **Routing pedonale reale** (OSRM, ORS) | Dipendenza esterna non prevista dallo stack | Stima geodetica con fattore urbano, dichiarata come stima |
 | **Traduzione dei cartelli via fotocamera** | Nuova pipeline di upload, costi e privacy: fuori da questo taglio | Frasario statico che copre i cartelli comuni |
 | **i18n completa dell'interfaccia** | Lavoro trasversale da progettare a parte | Localizzazione di chat, chip e card, con il limite dichiarato |
-| **Un Cicero conversazionale offline** | Il modello vive lato server | Una vista di consultazione, e l'utente deve capire che è quello |
+| **Un Cicerone conversazionale offline** | Il modello vive lato server | Una vista di consultazione, e l'utente deve capire che è quello |
 | **Pre-caching di una città intera** | Decine di megabyte e vincoli di licenza | Cache del solo riquadro visitato, con tetto dichiarato |
 | **Aria condizionata, prese nei locali, portici** come attributi verificati | Nessuno di questi è un dato Places | Tendenze dette come tali ("di solito", "chiedi al banco") |
 
@@ -210,7 +210,7 @@ Rilevate da una revisione di completezza sul documento stesso. Sono il lavoro ch
 
 **Perché conta.** Il briefing promette di chiudere sempre con un sì possibile, ma a Malpensa o Capodichino le tre voci pratiche (deposito, bagni, macchinette) sono irrilevanti finché l'utente non è in centro: il primo minuto si chiuderebbe con 'questo non lo so' proprio sul bisogno dominante, e l'utente esce dall'app dopo trenta secondi.
 
-**Proposta.** Definire una seconda variante del briefing (`arrival-briefing` con registro 'aeroporto') che, senza orari, dia comunque una mossa: nome del collegamento principale verificato su Places come luogo (fermata/terminal bus, stazione ferroviaria dell'aeroporto), distanza a piedi dal terminal, regola tariffaria dichiarata come consiglio generale, deep link Maps come ancora verificabile, più la voce SIM/wifi. Se la variante non è fattibile in questo taglio, scriverlo esplicitamente: 'Cicero copre gli arrivi ferroviari; in aeroporto degrada sull'apertura generica' — oggi il documento non dice né l'uno né l'altro.
+**Proposta.** Definire una seconda variante del briefing (`arrival-briefing` con registro 'aeroporto') che, senza orari, dia comunque una mossa: nome del collegamento principale verificato su Places come luogo (fermata/terminal bus, stazione ferroviaria dell'aeroporto), distanza a piedi dal terminal, regola tariffaria dichiarata come consiglio generale, deep link Maps come ancora verificabile, più la voce SIM/wifi. Se la variante non è fattibile in questo taglio, scriverlo esplicitamente: 'Cicerone copre gli arrivi ferroviari; in aeroporto degrada sull'apertura generica' — oggi il documento non dice né l'uno né l'altro.
 
 ### 8.2 GPS negato o posizione assente: il codice non degrada, mente. `hooks/use-location.ts` parte da `DEFAULT_CITY = 'Milano'` con coordinate 45.4642/9.19 e `app/api/chat/route.ts:57` fa `context.city || 'Milano'`; il documento non nomina mai questo fallback.
 
@@ -234,7 +234,7 @@ Rilevate da una revisione di completezza sul documento stesso. Sono il lavoro ch
 
 **Perché conta.** Il viaggiatore appena sceso dal treno non crea un account: è il caso normale, non il caso limite. Se le preferenze apprese e i vincoli non negoziabili (celiachia, passeggino) vivono solo nel profilo autenticato, per la maggioranza degli utenti quel meccanismo semplicemente non esiste — e un vincolo alimentare che il modello crede salvato e invece non lo è, è un rischio, non solo una feature mancante.
 
-**Proposta.** Dichiarare due livelli espliciti: vincoli e preferenze di sessione per l'anonimo (in memoria/`sessionStorage`, visibili nella barra chip di `trip-constraints`), profilo durevole solo dopo login, con un invito all'accesso mostrato dopo il primo sì accettato e mai nei primi trenta secondi. Nel prompt, distinguere 'ricordato per oggi' da 'salvato nel profilo' così Cicero non promette memoria che non ha.
+**Proposta.** Dichiarare due livelli espliciti: vincoli e preferenze di sessione per l'anonimo (in memoria/`sessionStorage`, visibili nella barra chip di `trip-constraints`), profilo durevole solo dopo login, con un invito all'accesso mostrato dopo il primo sì accettato e mai nei primi trenta secondi. Nel prompt, distinguere 'ricordato per oggi' da 'salvato nel profilo' così Cicerone non promette memoria che non ha.
 
 ### 8.6 Lingua: `language-and-phrasebook` è in POI con punteggio 5,7, ma il `SYSTEM_PROMPT` dice testualmente 'di default italiano' e il documento stesso ammette che il primo turno scivola in italiano.
 
@@ -258,7 +258,7 @@ Rilevate da una revisione di completezza sul documento stesso. Sono il lavoro ch
 
 **Perché conta.** L'utente appena arrivato ha spesso zero contanti locali e in Italia incontra bar, bagni a pagamento, depositi e taxi che il contante lo chiedono ancora. Non è un tema di budget: è un bisogno fisico della prima ora, allo stesso livello del bagno, ed è l'unico della lista §3 che può bloccare tutte le altre mosse (compreso il deposito bagagli proposto come prima tappa).
 
-**Proposta.** Aggiungere alla card del briefing una quarta voce condizionale 'Contanti' quando la prima proposta è tipicamente cash-first (deposito, bagni, bar), che apre una ricerca ATM verificata con `find-service`, e nel frattempo far dire a Cicero in mezza frase 'qui il contante può servire' come consiglio generale etichettato. Continuare a non convertire `priceLevel` in euro: mostrare la fascia così com'è, accanto al badge giusto.
+**Proposta.** Aggiungere alla card del briefing una quarta voce condizionale 'Contanti' quando la prima proposta è tipicamente cash-first (deposito, bagni, bar), che apre una ricerca ATM verificata con `find-service`, e nel frattempo far dire a Cicerone in mezza frase 'qui il contante può servire' come consiglio generale etichettato. Continuare a non convertire `priceLevel` in euro: mostrare la fascia così com'è, accanto al badge giusto.
 
 ### 8.10 Salute ed emergenza: `emergency-help` sta in POI a 5,7 e la farmacia di turno è dichiarata non disponibile. Non esiste nulla per pronto soccorso, guardia medica, farmaco finito, assorbenti, o crisi in corso.
 
@@ -318,7 +318,7 @@ Rilevate da una revisione di completezza sul documento stesso. Sono il lavoro ch
 
 **Perché conta.** Il tetto di spesa colpisce per definizione nei momenti di picco, cioè quando ci sono più utenti reali in città contemporaneamente, e un utente rimbalzato con un errore tecnico nel primo minuto non torna. Il documento tratta il costo come rischio economico e non come esperienza: è lo stesso tetto, ma il lato che l'utente vede non è progettato.
 
-**Proposta.** Definire il degrado su tre livelli e metterlo in tabella: (1) timeout di una singola chiamata Places → si propone con i dati già in mano, badge declassato; (2) budget del turno esaurito → il tool result lo dice al modello (già previsto) e Cicero dichiara il limite in mezza frase; (3) rate limit globale → schermata onesta con orientamento, indirizzo corrente e scheda emergenza, che non richiedono il modello. Aggiungere uno scenario GUI che forza il 429 e verifica che non compaia mai un errore tecnico grezzo.
+**Proposta.** Definire il degrado su tre livelli e metterlo in tabella: (1) timeout di una singola chiamata Places → si propone con i dati già in mano, badge declassato; (2) budget del turno esaurito → il tool result lo dice al modello (già previsto) e Cicerone dichiara il limite in mezza frase; (3) rate limit globale → schermata onesta con orientamento, indirizzo corrente e scheda emergenza, che non richiedono il modello. Aggiungere uno scenario GUI che forza il 429 e verifica che non compaia mai un errore tecnico grezzo.
 
 ---
 
@@ -329,7 +329,7 @@ Le voci della fascia ORA, ciascuna con la specifica implementabile prodotta dall
 ### `day-context` — Contesto della giornata: data, tramonto e finestre meteo
 
 COMPORTAMENTO
-Il modello oggi riceve solo `Ora locale: HH:mm` e una stringa meteo di sei ore ('22° · pioggia 60%'). Non sa che giorno è, non sa quando tramonta, non sa quando arriva la pioggia. Dopo questa slice il contextPrompt porta data completa con giorno della settimana, ora del tramonto, e le finestre derivate dal meteo orario ('sereno fino alle 13', 'pioggia 14-20', 'caldo 13-16 a 28 gradi'). Il prompt guadagna la regola del quando: all'aperto nella finestra di luce e bel tempo, al coperto sotto la pioggia e nelle ore calde, e va detto in mezza frase cosa 'scade'. Il client ricontrolla il meteo ogni 15 minuti mentre l'app è in primo piano: se la pioggia arriva prima del previsto manda un evento nascosto e Cicero propone di anticipare il coperto.
+Il modello oggi riceve solo `Ora locale: HH:mm` e una stringa meteo di sei ore ('22° · pioggia 60%'). Non sa che giorno è, non sa quando tramonta, non sa quando arriva la pioggia. Dopo questa slice il contextPrompt porta data completa con giorno della settimana, ora del tramonto, e le finestre derivate dal meteo orario ('sereno fino alle 13', 'pioggia 14-20', 'caldo 13-16 a 28 gradi'). Il prompt guadagna la regola del quando: all'aperto nella finestra di luce e bel tempo, al coperto sotto la pioggia e nelle ore calde, e va detto in mezza frase cosa 'scade'. Il client ricontrolla il meteo ogni 15 minuti mentre l'app è in primo piano: se la pioggia arriva prima del previsto manda un evento nascosto e Cicerone propone di anticipare il coperto.
 
 DATI
 Stessa chiamata Open-Meteo già in lib/api.ts, estesa a `hourly=temperature_2m,precipitation_probability,weather_code` e `daily=sunrise,sunset,temperature_2m_max`. Dato gratuito, deterministico, senza chiave. Data e giorno della settimana dall'orologio del client con Intl (it-IT). Nessuna nuova fonte, nessun costo marginale API: l'unico costo sono i turni LLM generati dal polling.
@@ -424,7 +424,7 @@ Da aggiungere anche un check di latenza più stretto sul passo 1 (`within(45_000
 ### `arrival-briefing` — Briefing di arrivo: il primo minuto per chi è appena sceso
 
 COMPORTAMENTO
-Se il punto di partenza è dentro o a poche centinaia di metri da una stazione, un capolinea o un aeroporto, l'app manda un evento nascosto di arrivo al posto del generico OPENING_EVENT e Cicero cambia registro: prima orientamento e bisogni fisici e logistici (dove sono rispetto al centro, valigia, bagno, sicurezza), poi la prima tappa. Il briefing resta corto — tre o quattro frasi, mai un elenco nel testo — e si chiude sempre con una sola proposta e le risposte rapide. Le voci pratiche diventano bottoni che rilanciano la richiesta corrispondente, così il briefing è una catena di sì e non una lista da leggere. Ordine fisso: orientamento, finestra della giornata, essenziali vicini, prima proposta, risposte rapide.
+Se il punto di partenza è dentro o a poche centinaia di metri da una stazione, un capolinea o un aeroporto, l'app manda un evento nascosto di arrivo al posto del generico OPENING_EVENT e Cicerone cambia registro: prima orientamento e bisogni fisici e logistici (dove sono rispetto al centro, valigia, bagno, sicurezza), poi la prima tappa. Il briefing resta corto — tre o quattro frasi, mai un elenco nel testo — e si chiude sempre con una sola proposta e le risposte rapide. Le voci pratiche diventano bottoni che rilanciano la richiesta corrispondente, così il briefing è una catena di sì e non una lista da leggere. Ordine fisso: orientamento, finestra della giornata, essenziali vicini, prima proposta, risposte rapide.
 
 RILEVAMENTO (la parte fragile, da progettare per il fallimento)
 Tre segnali in cascata, e il fallimento è silenzioso:
@@ -468,7 +468,7 @@ Questa seconda sessione è la più importante: la modalità arrivo che scatta a 
 ### `luggage-drop` — Posare il bagaglio: deposito o base, con l'orario di chiusura giusto
 
 COMPORTAMENTO
-Quando l'utente ha lo zaino o il trolley con sé — lo dice, tocca il chip, o si deduce dall'arrivo in un hub — la prima mossa di Cicero è liberarlo, prima di qualsiasi proposta culturale. La regola è semplice e sta nel prompt: se la base del viaggio è a meno di dieci minuti a piedi si passa di lì (quasi ovunque tengono i bagagli anche prima del check-in, ma si chiede, non si promette); altrimenti si cerca un deposito aperto adesso e che chiuda dopo l'ora di rientro prevista, verificandolo sui dettagli. Se nessun deposito regge la finestra, lo si dice e si propone la base. Vale anche all'ultimo giorno, quando il check-out è alle 10 e la finestra finisce alle 13. I prezzi dei depositi non sono nei dati: si dicono come 'di solito circa' o non si dicono.
+Quando l'utente ha lo zaino o il trolley con sé — lo dice, tocca il chip, o si deduce dall'arrivo in un hub — la prima mossa di Cicerone è liberarlo, prima di qualsiasi proposta culturale. La regola è semplice e sta nel prompt: se la base del viaggio è a meno di dieci minuti a piedi si passa di lì (quasi ovunque tengono i bagagli anche prima del check-in, ma si chiede, non si promette); altrimenti si cerca un deposito aperto adesso e che chiuda dopo l'ora di rientro prevista, verificandolo sui dettagli. Se nessun deposito regge la finestra, lo si dice e si propone la base. Vale anche all'ultimo giorno, quando il check-out è alle 10 e la finestra finisce alle 13. I prezzi dei depositi non sono nei dati: si dicono come 'di solito circa' o non si dicono.
 
 DATI
 Google Places `searchText` con query 'deposito bagagli' (buona copertura nelle città italiane), `openNow: true`, raggio piccolo, `rankPreference: DISTANCE` — già tutto supportato da `searchPlaces` in lib/server/places.ts. L'orario di chiusura viene dalla verifica introdotta da `verified-opening-hours`, che è la dipendenza reale di questa slice: senza, si propone un deposito che potrebbe chiudere prima del rientro, che è il fallimento peggiore possibile per questa funzionalità. Conoscenza del modello per 'chiedi alla reception' e per i prezzi indicativi, mai presentati come verificati.

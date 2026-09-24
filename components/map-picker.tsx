@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { GeoJSONSource, Map, Marker } from 'maplibre-gl';
 
+import { framingPoints } from '@/lib/route';
+
 type Coordinates = { lat: number; lng: number };
 
 type MapStop = {
@@ -103,7 +105,7 @@ export function MapPicker({
       element.type = 'button';
       element.className = 'map-candidate-marker';
       element.title = `${String.fromCharCode(65 + index)}. ${candidate.name}`;
-      element.setAttribute('aria-label', `Seleziona ${candidate.name} come tappa`);
+      element.setAttribute('aria-label', `Vedi la scheda di ${candidate.name}`);
       const label = document.createElement('span');
       label.className = 'map-candidate-pin-label';
       label.textContent = String.fromCharCode(65 + index);
@@ -118,11 +120,11 @@ export function MapPicker({
     });
 
     if (!fitTarget) return;
-    const fitPoints: Array<[number, number]> = fitTarget === 'candidates' && validCandidates.length
-      ? validCandidates.map((candidate) => [candidate.lng, candidate.lat])
-      : routePoints;
+    // The whole route stays in frame together with the pins: framing a single proposal
+    // zoomed onto it and pushed the stops already chosen off screen.
+    const fitPoints = framingPoints(currentCoords, validStops, validCandidates);
     if (fitPoints.length === 1) {
-      map.easeTo({ center: fitPoints[0], zoom: Math.max(map.getZoom(), fitTarget === 'candidates' ? 15.7 : 15.2), duration: 550 });
+      map.easeTo({ center: fitPoints[0], zoom: Math.max(map.getZoom(), 15.2), duration: 550 });
       return;
     }
 

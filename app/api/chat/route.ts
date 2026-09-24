@@ -80,7 +80,7 @@ export async function POST(request: Request) {
   if (!limit.allowed) {
     // The daily budget protects the account, so it says so plainly instead of blaming the visitor.
     const message = limit.scope === 'global'
-      ? 'Cicero ha raggiunto il budget di oggi e riprende domani. Le tappe già scelte restano al loro posto.'
+      ? 'Cicerone ha raggiunto il budget di oggi e riprende domani. Le tappe già scelte restano al loro posto.'
       : 'Troppe richieste in poco tempo. Riprova tra qualche minuto.';
     return Response.json(
       { error: 'RATE_LIMITED', message },

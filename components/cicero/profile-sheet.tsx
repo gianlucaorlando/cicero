@@ -52,7 +52,7 @@ export function ProfileSheet({ open, onOpenChange, authStatus, user, displayName
       <SheetContent className="profile-sheet" side="right">
         <SheetHeader>
           <p className="sheet-kicker">Memoria</p>
-          <SheetTitle>Le cose che Cicero sa di te</SheetTitle>
+          <SheetTitle>Le cose che Cicerone sa di te</SheetTitle>
           <SheetDescription>Le salvi una volta. Vengono considerate in ogni nuovo viaggio.</SheetDescription>
         </SheetHeader>
 

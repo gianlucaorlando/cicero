@@ -2,8 +2,8 @@ import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Cicero — il viaggio, in conversazione',
-    short_name: 'Cicero',
+    name: 'Cicerone — il viaggio, in conversazione',
+    short_name: 'Cicerone',
     description: 'Il compagno di viaggio che conosce il contesto e modifica il percorso mentre ne parlate.',
     start_url: '/',
     display: 'standalone',

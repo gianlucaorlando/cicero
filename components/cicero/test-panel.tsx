@@ -21,7 +21,7 @@ type ScenarioResult = { id: string; sessions: SessionResult[] };
 
 type Props = {
   ask: (text: string) => Promise<ChatResponse | null>;
-  /** Triggers Cicero's opening move (the hidden event sent when the page opens). */
+  /** Triggers Cicerone's opening move (the hidden event sent when the page opens). */
   start: () => Promise<ChatResponse | null>;
   itinerary: Stop[];
   candidates: PlaceCandidate[];
@@ -70,7 +70,7 @@ function seconds(ms?: number) {
 }
 
 function reportMarkdown(results: ScenarioResult[]) {
-  const lines: string[] = ['# Cicero · report test GUI', `Data: ${new Date().toLocaleString('it-IT')}`, ''];
+  const lines: string[] = ['# Cicerone · report test GUI', `Data: ${new Date().toLocaleString('it-IT')}`, ''];
   for (const result of results) {
     const scenario = scenarios.find((item) => item.id === result.id);
     lines.push(`## ${scenario?.title || result.id}`);

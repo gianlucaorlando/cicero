@@ -86,7 +86,7 @@ export function ConversationPanel({
   }, [messages, thinking, proposal, candidates, listed, alternativesOpen]);
 
   return (
-    <section className="conversation" aria-label="Conversazione con Cicero">
+    <section className="conversation" aria-label="Conversazione con Cicerone">
       <button className="drag-handle-button" type="button" onClick={onToggleMap} aria-label={mapOpen ? 'Espandi la conversazione' : 'Mostra la mappa'}>
         <span className="drag-handle" />
       </button>
@@ -157,7 +157,7 @@ export function ConversationPanel({
             type="button"
             variant="ghost"
             size="icon-lg"
-            aria-label={speech.listening ? 'Interrompi la dettatura' : 'Parla con Cicero'}
+            aria-label={speech.listening ? 'Interrompi la dettatura' : 'Parla con Cicerone'}
             aria-pressed={speech.listening}
             onClick={speech.toggle}
           >

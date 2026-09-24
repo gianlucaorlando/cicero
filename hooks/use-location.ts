@@ -15,7 +15,7 @@ export type Relocation = { coords: LatLng; label: string; city: string };
 type Params = {
   /** Error or status message for the user (GPS denied, address not found). */
   notify: (text: string, meta?: string) => void;
-  /** The origin moved successfully: Cicero should react and propose something nearby. */
+  /** The origin moved successfully: Cicerone should react and propose something nearby. */
   onRelocated: (relocation: Relocation) => void;
 };
 

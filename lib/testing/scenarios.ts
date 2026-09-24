@@ -28,7 +28,7 @@ export type Check = {
   pass: (snapshot: StepSnapshot, previous: StepSnapshot | null) => boolean;
 };
 
-/** A step either says something as the user, or (with `start`) triggers Cicero's automatic opening move. */
+/** A step either says something as the user, or (with `start`) triggers Cicerone's automatic opening move. */
 export type Step = { say: string; start?: boolean; checks: Check[] };
 
 /**
@@ -210,7 +210,7 @@ const base = [replied, within(60_000), offersReplies];
 export const scenarios: Scenario[] = [
   {
     id: 'opening-move',
-    title: 'Apertura: Cicero parla per primo',
+    title: 'Apertura: Cicerone parla per primo',
     description: 'Appena la pagina si apre, senza che l\'utente scriva, arriva una proposta motivata con le risposte rapide.',
     sessions: single('Arrivo in città', [
       {
@@ -226,7 +226,7 @@ export const scenarios: Scenario[] = [
   },
   {
     id: 'propose-first',
-    title: 'Cicero propone, io dico sì',
+    title: 'Cicerone propone, io dico sì',
     description: 'Dal tempo disponibile arriva subito una proposta concreta; ogni sì porta alla proposta successiva.',
     sessions: single('Due ore libere', [
       {
@@ -250,7 +250,7 @@ export const scenarios: Scenario[] = [
   {
     id: 'decline-then-accept',
     title: 'Un caffè: no, no, poi sì',
-    description: 'Senza preferenze Cicero propone un default; due rifiuti portano alternative già trovate, poi il sì aggiunge.',
+    description: 'Senza preferenze Cicerone propone un default; due rifiuti portano alternative già trovate, poi il sì aggiunge.',
     sessions: single('Pausa', [
       {
         say: 'Vorrei un caffè qui vicino.',
@@ -416,7 +416,7 @@ export const scenarios: Scenario[] = [
   {
     id: 'dinner-second-thoughts',
     title: 'Cena e serata con ripensamenti',
-    description: 'Pizzeria accettata, serata scelta da Cicero, poi la pizzeria viene sostituita e la serata cancellata. Una settimana dopo "come al solito", poi cambia idea.',
+    description: 'Pizzeria accettata, serata scelta da Cicerone, poi la pizzeria viene sostituita e la serata cancellata. Una settimana dopo "come al solito", poi cambia idea.',
     sessions: [
       {
         title: 'Sessione 1 · stasera',
@@ -473,7 +473,7 @@ export const scenarios: Scenario[] = [
   {
     id: 'full-day-cancellations',
     title: 'Giornata piena, un sì alla volta, poi cancella tutto',
-    description: 'Cicero propone un monumento dopo l\'altro, poi pranzo e museo; l\'utente dice sì cinque volte, poi taglia, rimette, azzera e chiude con un caffè.',
+    description: 'Cicerone propone un monumento dopo l\'altro, poi pranzo e museo; l\'utente dice sì cinque volte, poi taglia, rimette, azzera e chiude con un caffè.',
     sessions: single('Sessione unica · giornata intera', [
       {
         say: 'Ho l’intera giornata. Vorrei tre monumenti, poi un pranzo veloce, poi un museo: proponi tu, una cosa alla volta.',

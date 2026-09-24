@@ -19,7 +19,7 @@ const initialMessages: ChatMessage[] = [
   {
     id: 1,
     role: 'assistant',
-    text: 'Ciao, sono Cicero: ti propongo io da dove partire, tu dici solo sì o no.',
+    text: 'Ciao, sono Cicerone: ti propongo io da dove partire, tu dici solo sì o no.',
     meta: 'Userò solo luoghi verificati',
   },
 ];
@@ -32,7 +32,7 @@ export const initialSuggestions = [
   'Voglio fare shopping',
 ];
 
-/** The hidden event that asks Cicero to make the first move as soon as the page opens. */
+/** The hidden event that asks Cicerone to make the first move as soon as the page opens. */
 export const OPENING_EVENT = 'Evento: l’utente ha appena aperto l’app e non ha ancora scritto nulla. Fai la prima mossa: proponi subito una tappa adatta a ora, meteo, punto di partenza e profilo, e chiedi se va bene o quanto tempo ha.';
 
 export function relocationEvent(label: string, city: string) {
@@ -104,7 +104,7 @@ export function useConversation(onProfilePatch: (patch: ProfilePatch) => void) {
     }
   }, [append, messages, onProfilePatch, plan, thinking]);
 
-  /** Cicero's opening move: a hidden event that makes it propose before the user types anything. */
+  /** Cicerone's opening move: a hidden event that makes it propose before the user types anything. */
   const start = useCallback((context: TurnContext) => {
     if (started) return Promise.resolve(null);
     return send(OPENING_EVENT, context, { hidden: true });

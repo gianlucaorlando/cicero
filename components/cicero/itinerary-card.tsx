@@ -5,19 +5,8 @@ import { ExternalLink, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { pluralStops } from '@/lib/format';
-import { itineraryDistance } from '@/lib/geo';
+import { estimatedDuration } from '@/lib/route';
 import type { LatLng, Stop } from '@/lib/types';
-
-const MINUTES_PER_STOP = 45;
-const WALKING_METERS_PER_MINUTE = 80;
-
-export function estimatedDuration(origin: LatLng, stops: Stop[]) {
-  const minutes = stops.length * MINUTES_PER_STOP + Math.round(itineraryDistance(origin, stops) / WALKING_METERS_PER_MINUTE);
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  if (!hours) return `circa ${rest} min`;
-  return rest ? `circa ${hours} h ${rest} min` : `circa ${hours} h`;
-}
 
 type Props = {
   origin: LatLng;

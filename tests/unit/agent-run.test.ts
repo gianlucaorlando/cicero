@@ -149,7 +149,7 @@ describe('runAgent', () => {
   it('never sends a history that starts with the assistant', async () => {
     create.mockResolvedValueOnce({ stop_reason: 'end_turn', content: [text('Ok.')] });
     const withGreeting = request();
-    withGreeting.messages = [{ role: 'assistant', text: 'Ciao, sono Cicero.' }, ...withGreeting.messages];
+    withGreeting.messages = [{ role: 'assistant', text: 'Ciao, sono Cicerone.' }, ...withGreeting.messages];
     await runAgent(withGreeting);
     const sent = create.mock.calls[0][0].messages;
     expect(sent[0].role).toBe('user');

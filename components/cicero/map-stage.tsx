@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { pluralStops } from '@/lib/format';
+import { mapBanner } from '@/lib/route';
 import type { LatLng, PlaceCandidate, Stop } from '@/lib/types';
 
 type Props = {
@@ -15,8 +16,8 @@ type Props = {
   onMovePin: (coords: LatLng) => void;
   stops: Stop[];
   candidates: PlaceCandidate[];
-  onSelectCandidate: (candidate: PlaceCandidate) => void;
-  selectionDisabled: boolean;
+  /** Tapping a pin opens that place's sheet; choosing happens there, never on a stray tap. */
+  onOpenCandidate: (candidate: PlaceCandidate) => void;
   focusToken: number;
   city: string;
   locationLabel: string;
@@ -40,8 +41,7 @@ export function MapStage({
   onMovePin,
   stops,
   candidates,
-  onSelectCandidate,
-  selectionDisabled,
+  onOpenCandidate,
   focusToken,
   city,
   locationLabel,
@@ -59,6 +59,7 @@ export function MapStage({
   onOpenProfile,
   onMapReady,
 }: Props) {
+  const banner = mapBanner(stops.length, candidates.length);
   return (
     <section className={`map-stage ${stops.length ? 'has-route' : ''} ${candidates.length ? 'has-candidates' : ''}`} aria-label="Mappa dell’itinerario">
       <MapPicker
@@ -68,7 +69,7 @@ export function MapStage({
         candidates={candidates}
         onSelectCandidate={(candidateId) => {
           const candidate = candidates.find((place) => place.id === candidateId);
-          if (candidate && !selectionDisabled) onSelectCandidate(candidate);
+          if (candidate) onOpenCandidate(candidate);
         }}
         focusToken={focusToken}
         onReady={onMapReady}
@@ -76,9 +77,9 @@ export function MapStage({
       <div className="map-wash" aria-hidden="true" />
 
       <header className="topbar">
-        <div className="brand" aria-label="Cicero">
+        <div className="brand" aria-label="Cicerone">
           <span className="brand-mark"><Navigation /></span>
-          <span>Cicero</span>
+          <span>Cicerone</span>
         </div>
         <div className="topbar-actions">
           <Button className="saved-routes-button" variant="outline" size="icon" aria-label="Apri i percorsi salvati" onClick={onOpenSavedRoutes}>
@@ -115,14 +116,14 @@ export function MapStage({
         <span className="map-search-hint"><Move /> Tieni premuto e trascina il pin</span>
       </form>
 
-      {candidates.length > 0 ? (
+      {banner === 'proposal' || banner === 'list' ? (
         <div className="candidate-map-summary">
           <MapPin />
-          {candidates.length === 1
-            ? <div><strong>La proposta è sulla mappa</strong><span>Tocca il pin per aggiungerla</span></div>
-            : <div><strong>{candidates.length} proposte sulla mappa</strong><span>Tocca un pin oppure scegli dall’elenco</span></div>}
+          {banner === 'proposal'
+            ? <div><strong>La proposta è sulla mappa</strong><span>Tocca il pin per vedere il locale</span></div>
+            : <div><strong>{candidates.length} proposte sulla mappa</strong><span>Tocca un pin per vedere il locale</span></div>}
         </div>
-      ) : stops.length > 0 && (
+      ) : banner === 'route' && (
         <button className="route-summary" type="button" onClick={onOpenRoute} aria-label="Apri il riepilogo del percorso">
           <span className="route-summary-icon"><Route /></span>
           <span className="route-summary-copy">

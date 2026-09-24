@@ -6,10 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { formatRating, humanReviewCount } from '@/lib/format';
 import { humanDistance } from '@/lib/geo';
+import { walkingMinutes } from '@/lib/route';
 import type { PlaceCandidate } from '@/lib/types';
-
-/** Rough walking pace, the same one the itinerary card uses for its estimate. */
-const WALKING_METERS_PER_MINUTE = 80;
 
 const TYPE_LABELS: Record<string, string> = {
   bakery: 'Panetteria',
@@ -42,16 +40,15 @@ export function placeTypeLabel(primaryType: string) {
   return cleaned ? cleaned.charAt(0).toLocaleUpperCase('it') + cleaned.slice(1) : 'Luogo';
 }
 
-export function walkingMinutes(distanceMeters: number) {
-  return Math.max(1, Math.round(distanceMeters / WALKING_METERS_PER_MINUTE));
-}
-
 type Props = {
   place: PlaceCandidate | null;
-  /** Cicero's one-line reason, shown only when the open place is the one being proposed. */
+  /** Cicerone's one-line reason, shown only when the open place is the one being proposed. */
   reason?: string;
-  /** Present when the place is the pending proposal: the sheet can then accept or refuse it. */
-  actions?: { onAccept: () => void; onDecline: () => void };
+  /**
+   * What the user can do from the sheet: accept the pending proposal (with an
+   * optional "another one"), or choose an option shown on the map or in the list.
+   */
+  actions?: { acceptLabel: string; onAccept: () => void; onDecline?: () => void };
   busy: boolean;
   onOpenChange: (open: boolean) => void;
 };
@@ -125,11 +122,13 @@ export function PlaceSheet({ place, reason, actions, busy, onOpenChange }: Props
             {actions && (
               <div className="place-sheet-actions">
                 <Button type="button" size="sm" onClick={actions.onAccept} disabled={busy}>
-                  {busy ? <LocateFixed className="spin" /> : <Check />} Sì, aggiungila
+                  {busy ? <LocateFixed className="spin" /> : <Check />} {actions.acceptLabel}
                 </Button>
-                <Button type="button" size="sm" variant="outline" onClick={actions.onDecline} disabled={busy}>
-                  <RefreshCw /> Un’altra
-                </Button>
+                {actions.onDecline && (
+                  <Button type="button" size="sm" variant="outline" onClick={actions.onDecline} disabled={busy}>
+                    <RefreshCw /> Un’altra
+                  </Button>
+                )}
               </div>
             )}
           </>
