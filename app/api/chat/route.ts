@@ -8,7 +8,7 @@ import { errorResponse, json, readJson, textValue } from '@/lib/server/http';
 import { isValidPlaceId } from '@/lib/server/places';
 import { chatRateLimitRules, clientKey, enforceRateLimits } from '@/lib/server/rate-limit';
 import { normalizeStops } from '@/lib/server/stops';
-import type { AreaInfo, AreaKind, ChatRequest, DiscoveryPlace, PlaceCandidate } from '@/lib/types';
+import type { AreaInfo, AreaKind, ChatRequest, DiscoveryPlace, PlaceCandidate, RouteProposal } from '@/lib/types';
 
 const MAX_MESSAGES = 40;
 const MAX_MESSAGE_LENGTH = 2000;
@@ -40,6 +40,22 @@ function normalizeDiscovery(value: unknown): DiscoveryPlace | null {
   const category = value && typeof value === 'object' ? (value as Record<string, unknown>).category : null;
   if (!candidate || (category !== 'sight' && category !== 'food')) return null;
   return { ...candidate, category };
+}
+
+/** The walk waiting for approval, as the client echoes it back. Anything malformed means no walk. */
+function normalizeRouteProposal(value: unknown): RouteProposal | null {
+  if (!value || typeof value !== 'object') return null;
+  const route = value as Record<string, unknown>;
+  const anchor = route.anchor && typeof route.anchor === 'object' ? route.anchor as Record<string, unknown> : null;
+  const anchorId = textValue(anchor?.id, 300);
+  const anchorName = textValue(anchor?.name, 160);
+  if (!anchor || !isValidPlaceId(anchorId) || !anchorName || !isValidLatLng({ lat: anchor.lat, lng: anchor.lng })) return null;
+  const stops = Array.isArray(route.stops)
+    ? route.stops.slice(0, 5).map(normalizeCandidate).filter((stop): stop is PlaceCandidate => stop !== null)
+    : [];
+  if (!stops.length) return null;
+  const distance = typeof route.distanceMeters === 'number' && Number.isFinite(route.distanceMeters) ? Math.max(0, route.distanceMeters) : 0;
+  return { anchor: { id: anchorId, name: anchorName, lat: anchor.lat as number, lng: anchor.lng as number }, stops, distanceMeters: distance };
 }
 
 const AREA_KINDS: AreaKind[] = ['transit', 'touristic', 'transit-touristic', 'ordinary'];
@@ -85,6 +101,7 @@ function normalizeRequest(payload: unknown): ChatRequest | null {
         ? context.discovery.slice(0, 12).map(normalizeDiscovery).filter((place): place is DiscoveryPlace => place !== null)
         : [],
       area: normalizeArea(context.area),
+      routeProposal: normalizeRouteProposal(context.routeProposal),
     },
   };
 }

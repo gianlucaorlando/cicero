@@ -73,6 +73,9 @@ export function MapPicker({
   onSelectCandidate,
   discovery,
   onOpenDiscovery,
+  preview,
+  previewStartNumber,
+  onOpenPreview,
   popup,
   onPopupClose,
   focusToken,
@@ -85,6 +88,10 @@ export function MapPicker({
   onSelectCandidate: (candidateId: string) => void;
   discovery: MapDiscovery[];
   onOpenDiscovery: (placeId: string) => void;
+  /** A proposed walk, in order: drawn dashed from the last stop, numbered after the route. */
+  preview: MapCandidate[];
+  previewStartNumber: number;
+  onOpenPreview: (placeId: string) => void;
   popup: MapPopup;
   onPopupClose: () => void;
   focusToken: number;
@@ -102,6 +109,9 @@ export function MapPicker({
   const onPopupCloseRef = useRef(onPopupClose);
   const discoveryRef = useRef(discovery);
   const discoveryMarkersRef = useRef<Marker[]>([]);
+  const previewRef = useRef({ places: preview, startNumber: previewStartNumber });
+  const previewMarkersRef = useRef<Marker[]>([]);
+  const onOpenPreviewRef = useRef(onOpenPreview);
   const popupRef = useRef<Popup | null>(null);
   // The popup's React content renders into this node through a portal; null during server render.
   const [popupNode] = useState(() => (typeof document === 'undefined' ? null : document.createElement('div')));
@@ -126,6 +136,13 @@ export function MapPicker({
 
     const routeSource = map.getSource('itinerary-route') as GeoJSONSource | undefined;
     void routeSource?.setData(routeFeature(routePoints));
+
+    // The proposed walk continues from where the route ends, dashed until the user approves it.
+    const validPreview = previewRef.current.places.filter((place) => Number.isFinite(place.lat) && Number.isFinite(place.lng));
+    const previewSource = map.getSource('route-preview') as GeoJSONSource | undefined;
+    void previewSource?.setData(routeFeature(validPreview.length
+      ? [routePoints.at(-1)!, ...validPreview.map((place) => [place.lng, place.lat] as [number, number])]
+      : []));
 
     // Points of interest first, so stops and proposals are drawn on top of them.
     discoveryMarkersRef.current.forEach((marker) => marker.remove());
@@ -160,6 +177,24 @@ export function MapPicker({
         .addTo(map);
     });
 
+    previewMarkersRef.current.forEach((marker) => marker.remove());
+    previewMarkersRef.current = validPreview.map((place, index) => {
+      const number = previewRef.current.startNumber + index;
+      const element = document.createElement('button');
+      element.type = 'button';
+      element.className = 'map-preview-marker';
+      element.textContent = String(number);
+      element.title = `${number}. ${place.name} (proposta)`;
+      element.setAttribute('aria-label', `Tappa proposta ${number}: ${place.name}. Apri le informazioni`);
+      element.addEventListener('click', (event) => {
+        event.stopPropagation();
+        onOpenPreviewRef.current(place.id);
+      });
+      return new maplibre.Marker({ element, anchor: 'center' })
+        .setLngLat([place.lng, place.lat])
+        .addTo(map);
+    });
+
     const validCandidates = candidatesRef.current.filter(
       (candidate) => Number.isFinite(candidate.lat) && Number.isFinite(candidate.lng),
     );
@@ -187,7 +222,8 @@ export function MapPicker({
     // The whole route stays in frame together with the pins: framing a single proposal
     // zoomed onto it and pushed the stops already chosen off screen.
     // Points of interest join the frame until a route exists; after that the route leads.
-    const fitPoints = framingPoints(currentCoords, validStops, validStops.length ? validCandidates : [...validCandidates, ...discoveryRef.current]);
+    const pins = [...validCandidates, ...validPreview];
+    const fitPoints = framingPoints(currentCoords, validStops, validStops.length ? pins : [...pins, ...discoveryRef.current]);
     if (fitPoints.length === 1) {
       map.easeTo({ center: fitPoints[0], zoom: Math.max(map.getZoom(), 15.2), duration: 550 });
       return;
@@ -200,7 +236,8 @@ export function MapPicker({
       padding: {
         top: Math.min(180, Math.max(128, Math.round(height * 0.34))),
         right: 54,
-        bottom: Math.min(102, Math.max(78, Math.round(height * 0.18))),
+        // Clears the route banner at the bottom, so the last pin is never half under it.
+        bottom: Math.min(130, Math.max(100, Math.round(height * 0.18))),
         left: 54,
       },
       maxZoom: 15.5,
@@ -218,8 +255,15 @@ export function MapPicker({
 
   useEffect(() => {
     onOpenDiscoveryRef.current = onOpenDiscovery;
+    onOpenPreviewRef.current = onOpenPreview;
     onPopupCloseRef.current = onPopupClose;
-  }, [onOpenDiscovery, onPopupClose]);
+  }, [onOpenDiscovery, onOpenPreview, onPopupClose]);
+
+  useEffect(() => {
+    previewRef.current = { places: preview, startNumber: previewStartNumber };
+    // A new walk reframes the map so every proposed stop is in view; its withdrawal reframes the route.
+    updateItineraryOverlay('route');
+  }, [preview, previewStartNumber, updateItineraryOverlay]);
 
   useEffect(() => {
     discoveryRef.current = discovery;
@@ -312,6 +356,10 @@ export function MapPicker({
               type: 'geojson',
               data: routeFeature([]),
             },
+            'route-preview': {
+              type: 'geojson',
+              data: routeFeature([]),
+            },
           },
           layers: [
             {
@@ -343,6 +391,29 @@ export function MapPicker({
                 'line-color': '#d45126',
                 'line-opacity': 1,
                 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 5, 17, 9],
+              },
+            },
+            {
+              id: 'route-preview-casing',
+              type: 'line',
+              source: 'route-preview',
+              layout: { 'line-cap': 'round', 'line-join': 'round' },
+              paint: {
+                'line-color': '#fffaf2',
+                'line-opacity': 0.9,
+                'line-width': ['interpolate', ['linear'], ['zoom'], 10, 6, 17, 10],
+              },
+            },
+            {
+              id: 'route-preview-line',
+              type: 'line',
+              source: 'route-preview',
+              layout: { 'line-cap': 'round', 'line-join': 'round' },
+              paint: {
+                'line-color': '#d45126',
+                'line-opacity': 0.85,
+                'line-width': ['interpolate', ['linear'], ['zoom'], 10, 3, 17, 5],
+                'line-dasharray': [1.4, 1.6],
               },
             },
           ],
@@ -411,6 +482,8 @@ export function MapPicker({
       candidateMarkersRef.current = [];
       discoveryMarkersRef.current.forEach((marker) => marker.remove());
       discoveryMarkersRef.current = [];
+      previewMarkersRef.current.forEach((marker) => marker.remove());
+      previewMarkersRef.current = [];
       popupRef.current?.remove();
       popupRef.current = null;
       markerRef.current?.remove();

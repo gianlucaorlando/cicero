@@ -1,5 +1,5 @@
 import { shiftTime } from '@/lib/format';
-import type { ChatAction, PlaceCandidate, Proposal, Stop } from '@/lib/types';
+import type { ChatAction, PlaceCandidate, Proposal, RouteProposal, Stop } from '@/lib/types';
 
 export type PlanState = {
   itinerary: Stop[];
@@ -12,11 +12,13 @@ export type PlanState = {
   /** Whether those candidates are on screen as a list. Knowing them is not showing them. */
   listed: boolean;
   proposal: Proposal | null;
+  /** A walk through nearby sights waiting for a yes: one proposal for several stops. */
+  routeProposal: RouteProposal | null;
   /** Quick replies suggested by the agent for the next turn. */
   suggestions: string[];
 };
 
-export const emptyPlan: PlanState = { itinerary: [], candidates: [], listed: false, proposal: null, suggestions: [] };
+export const emptyPlan: PlanState = { itinerary: [], candidates: [], listed: false, proposal: null, routeProposal: null, suggestions: [] };
 
 /** A stop the user just took out by hand, and where it was, so a mistaken tap can be undone. */
 export type StopRemoval = { stop: Stop; index: number };
@@ -32,7 +34,8 @@ export function restoreStop(itinerary: Stop[], removal: StopRemoval): Stop[] {
 
 /**
  * Applies agent actions in order. A proposal or a search replaces what was
- * shown before; adding stops consumes it.
+ * shown before; adding stops consumes it. Only one question is pending at a
+ * time: a walk and a single proposal replace each other.
  */
 export function applyActions(state: PlanState, actions: ChatAction[]): PlanState {
   return actions.reduce<PlanState>((current, action) => {
@@ -42,9 +45,17 @@ export function applyActions(state: PlanState, actions: ChatAction[]): PlanState
       case 'show_candidates':
         return { ...current, candidates: action.candidates, listed: true, proposal: null };
       case 'propose':
-        return { ...current, candidates: [action.proposal.candidate, ...action.proposal.alternatives], listed: false, proposal: action.proposal };
+        return {
+          ...current,
+          candidates: [action.proposal.candidate, ...action.proposal.alternatives],
+          listed: false,
+          proposal: action.proposal,
+          routeProposal: null,
+        };
+      case 'propose_route':
+        return { ...current, candidates: [], listed: false, proposal: null, routeProposal: action.route };
       case 'dismiss_proposal':
-        return { ...current, candidates: [], listed: false, proposal: null };
+        return { ...current, candidates: [], listed: false, proposal: null, routeProposal: null };
       case 'suggest_replies':
         return { ...current, suggestions: action.replies };
       case 'add_stops': {
@@ -55,6 +66,7 @@ export function applyActions(state: PlanState, actions: ChatAction[]): PlanState
           candidates: [],
           listed: false,
           proposal: null,
+          routeProposal: null,
         };
       }
       case 'remove_stops':

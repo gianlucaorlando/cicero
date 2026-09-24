@@ -8,7 +8,7 @@ import type { ChatContext, ChatMessage, ChatResponse, ChatRole, ProfilePatch, St
 
 export type ChatMode = 'unknown' | 'ready' | 'missing' | 'error';
 
-export type TurnContext = Omit<ChatContext, 'itinerary' | 'candidates' | 'proposing'>;
+export type TurnContext = Omit<ChatContext, 'itinerary' | 'candidates' | 'proposing' | 'routeProposal'>;
 
 export type SendOptions = {
   /** App-generated event: sent to the model as a user turn, never shown in the chat. */
@@ -71,7 +71,13 @@ export function useConversation(onProfilePatch: (patch: ProfilePatch) => void) {
     try {
       const response = await api.chat({
         messages: [...messages.map(({ role, text: body }) => ({ role, text: body })), { role: 'user', text: value }],
-        context: { ...context, itinerary: plan.itinerary, candidates: plan.candidates, proposing: plan.proposal !== null },
+        context: {
+          ...context,
+          itinerary: plan.itinerary,
+          candidates: plan.candidates,
+          proposing: plan.proposal !== null,
+          routeProposal: plan.routeProposal,
+        },
       });
 
       setMode('ready');
@@ -119,7 +125,7 @@ export function useConversation(onProfilePatch: (patch: ProfilePatch) => void) {
   }, []);
 
   const replaceItinerary = useCallback((stops: Stop[]) => {
-    setPlan((current) => ({ ...current, itinerary: stops, candidates: [], listed: false, proposal: null }));
+    setPlan((current) => ({ ...current, itinerary: stops, candidates: [], listed: false, proposal: null, routeProposal: null }));
   }, []);
 
   /** Back to the opening state: used by the hidden test panel between scenarios. */
@@ -136,6 +142,7 @@ export function useConversation(onProfilePatch: (patch: ProfilePatch) => void) {
     candidates: plan.candidates,
     listed: plan.listed,
     proposal: plan.proposal,
+    routeProposal: plan.routeProposal,
     suggestions: plan.suggestions,
     thinking,
     mode,

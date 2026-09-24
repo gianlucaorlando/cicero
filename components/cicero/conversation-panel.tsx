@@ -6,10 +6,11 @@ import { Check, Mic, Send, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { ItineraryCard } from '@/components/cicero/itinerary-card';
 import { PlacesCard } from '@/components/cicero/places-card';
 import { ProposalCard } from '@/components/cicero/proposal-card';
+import { RouteProposalCard } from '@/components/cicero/route-proposal-card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { StopRemoval } from '@/lib/conversation-state';
-import type { ChatMessage, LatLng, PlaceCandidate, Proposal, Stop } from '@/lib/types';
+import type { ChatMessage, LatLng, PlaceCandidate, Proposal, RouteProposal, Stop } from '@/lib/types';
 
 type Props = {
   mapOpen: boolean;
@@ -23,6 +24,10 @@ type Props = {
   proposal: Proposal | null;
   onAcceptProposal: () => void;
   onDeclineProposal: () => void;
+  /** A walk through nearby sights waiting for a yes. */
+  routeProposal: RouteProposal | null;
+  onAcceptRoute: () => void;
+  onDeclineRoute: () => void;
   alternativesOpen: boolean;
   onToggleAlternatives: () => void;
   onOpenPlace: (place: PlaceCandidate) => void;
@@ -45,8 +50,14 @@ type Props = {
 
 const normalize = (value: string) => value.toLocaleLowerCase('it').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]+/g, '').trim();
 
-/** With a proposal on screen its card already offers "sì" and "un'altra": drop chips that would repeat them. */
-function visibleSuggestions(suggestions: string[], proposal: Proposal | null) {
+/**
+ * With a proposal on screen its card already offers "sì" and "un'altra" (or,
+ * for a walk, "sì" and "no"): drop chips that would repeat them.
+ */
+function visibleSuggestions(suggestions: string[], proposal: Proposal | null, routeProposal: RouteProposal | null) {
+  if (routeProposal) {
+    return suggestions.filter((suggestion) => !/^(si|ok|va bene|perfetto|no)\b/.test(normalize(suggestion)));
+  }
   if (!proposal) return suggestions;
   return suggestions.filter((suggestion) => {
     const text = normalize(suggestion);
@@ -66,6 +77,9 @@ export function ConversationPanel({
   proposal,
   onAcceptProposal,
   onDeclineProposal,
+  routeProposal,
+  onAcceptRoute,
+  onDeclineRoute,
   alternativesOpen,
   onToggleAlternatives,
   onOpenPlace,
@@ -88,7 +102,9 @@ export function ConversationPanel({
 
   useEffect(() => {
     messagesEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, [messages, thinking, proposal, candidates, listed, alternativesOpen]);
+  }, [messages, thinking, proposal, routeProposal, candidates, listed, alternativesOpen]);
+
+  const chips = visibleSuggestions(suggestions, proposal, routeProposal);
 
   return (
     <section className="conversation" aria-label="Conversazione con Cicerone">
@@ -136,6 +152,15 @@ export function ConversationPanel({
               <PlacesCard candidates={proposal.alternatives} disabled={thinking} onSelect={onSelectCandidate} letterOffset={1} title="Le altre opzioni" />
             )}
           </>
+        ) : routeProposal ? (
+          <RouteProposalCard
+            route={routeProposal}
+            firstNumber={itinerary.length + 1}
+            disabled={thinking}
+            onAccept={onAcceptRoute}
+            onDecline={onDeclineRoute}
+            onOpenPlace={onOpenPlace}
+          />
         ) : listed && candidates.length > 0 && (
           <PlacesCard candidates={candidates} disabled={thinking} onSelect={onSelectCandidate} />
         )}
@@ -149,9 +174,9 @@ export function ConversationPanel({
         <div ref={messagesEnd} />
       </div>
 
-      {visibleSuggestions(suggestions, proposal).length > 0 && !thinking && (
+      {chips.length > 0 && !thinking && (
         <div className="quick-prompts" aria-label="Risposte rapide">
-          {visibleSuggestions(suggestions, proposal).map((suggestion) => (
+          {chips.map((suggestion) => (
             <button type="button" key={suggestion} onClick={() => onSuggestion(suggestion)}>{suggestion}</button>
           ))}
         </div>

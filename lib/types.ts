@@ -58,6 +58,19 @@ export type AreaInfo = { kind: AreaKind; hub: string | null };
 
 export type Discovery = { places: DiscoveryPlace[]; area: AreaInfo };
 
+/**
+ * A walk through the sights around one the user just chose, offered as a whole:
+ * one "sì" adds every stop, in this order.
+ */
+export type RouteProposal = {
+  /** The sight just added: the walk starts there. */
+  anchor: { id: string; name: string; lat: number; lng: number };
+  /** The other sights, in walking order. */
+  stops: PlaceCandidate[];
+  /** Walking distance from the anchor through every stop, as the crow flies. */
+  distanceMeters: number;
+};
+
 export type PlaceDetails = {
   id: string;
   name: string;
@@ -118,6 +131,8 @@ export type ChatContext = {
   discovery?: DiscoveryPlace[];
   /** Kind of area around the origin: transit hub, touristic, both or neither. */
   area?: AreaInfo | null;
+  /** A walk through nearby sights, waiting for the user's approval. */
+  routeProposal?: RouteProposal | null;
 };
 
 export type ChatRequest = {
@@ -146,6 +161,7 @@ export type ChatAction =
   | { type: 'set_candidates'; candidates: PlaceCandidate[] }
   | { type: 'show_candidates'; candidates: PlaceCandidate[] }
   | { type: 'propose'; proposal: Proposal }
+  | { type: 'propose_route'; route: RouteProposal }
   | { type: 'dismiss_proposal' }
   | { type: 'suggest_replies'; replies: string[] }
   | { type: 'add_stops'; stops: Stop[] }

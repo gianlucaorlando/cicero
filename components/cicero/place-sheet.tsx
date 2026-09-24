@@ -48,7 +48,7 @@ type Props = {
    * What the user can do from the sheet: accept the pending proposal (with an
    * optional "another one"), or choose an option shown on the map or in the list.
    */
-  actions?: { acceptLabel: string; onAccept: () => void; onDecline?: () => void };
+  actions?: { acceptLabel: string; onAccept: () => void; onDecline?: () => void; declineLabel?: string };
   busy: boolean;
   onOpenChange: (open: boolean) => void;
 };
@@ -126,7 +126,7 @@ export function PlaceSheet({ place, reason, actions, busy, onOpenChange }: Props
                 </Button>
                 {actions.onDecline && (
                   <Button type="button" size="sm" variant="outline" onClick={actions.onDecline} disabled={busy}>
-                    <RefreshCw /> Un’altra
+                    <RefreshCw /> {actions.declineLabel ?? 'Un’altra'}
                   </Button>
                 )}
               </div>

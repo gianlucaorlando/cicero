@@ -75,6 +75,24 @@ export function isValidPlaceId(id: string) {
   return /^[A-Za-z0-9_-]{8,300}$/.test(id);
 }
 
+function candidateFrom(place: GooglePlacePayload, from: LatLng): PlaceCandidate | null {
+  if (!place.id || !place.displayName?.text || place.location?.latitude == null || place.location?.longitude == null) return null;
+  const point = { lat: place.location.latitude, lng: place.location.longitude };
+  return {
+    id: place.id,
+    name: place.displayName.text,
+    address: place.formattedAddress || '',
+    ...point,
+    primaryType: place.primaryType || 'point_of_interest',
+    businessStatus: place.businessStatus || null,
+    googleMapsUri: place.googleMapsUri || null,
+    rating: place.rating ?? null,
+    userRatingCount: place.userRatingCount ?? null,
+    distanceMeters: distanceMeters(from, point),
+    tripadvisor: null,
+  };
+}
+
 export async function searchPlaces(input: SearchPlacesInput): Promise<PlaceCandidate[]> {
   const apiKey = requireApiKey();
   const query = input.query.trim().slice(0, 120);
@@ -105,26 +123,46 @@ export async function searchPlaces(input: SearchPlacesInput): Promise<PlaceCandi
   }
 
   const places = (data.places || [])
-    .filter((place) => place.id && place.displayName?.text && place.location?.latitude != null && place.location?.longitude != null)
-    .map((place) => ({
-      id: place.id!,
-      name: place.displayName!.text!,
-      address: place.formattedAddress || '',
-      lat: place.location!.latitude!,
-      lng: place.location!.longitude!,
-      primaryType: place.primaryType || 'point_of_interest',
-      businessStatus: place.businessStatus || null,
-      googleMapsUri: place.googleMapsUri || null,
-      rating: place.rating ?? null,
-      userRatingCount: place.userRatingCount ?? null,
-      distanceMeters: distanceMeters(input.origin, { lat: place.location!.latitude!, lng: place.location!.longitude! }),
-    }));
+    .map((place) => candidateFrom(place, input.origin))
+    .filter((place): place is PlaceCandidate => place !== null);
 
   const tripadvisorApiKey = process.env.TRIPADVISOR_API_KEY;
   return Promise.all(places.map(async (place) => ({
     ...place,
     tripadvisor: tripadvisorApiKey ? await fetchTripadvisorSummary(place, tripadvisorApiKey) : null,
   })));
+}
+
+/** Google types that make a place worth walking to, for the popularity-ranked search around a monument. */
+const SIGHT_TYPES = [
+  'tourist_attraction', 'historical_landmark', 'monument', 'church', 'museum', 'art_gallery',
+  'plaza', 'fountain', 'cultural_landmark', 'historical_place', 'sculpture',
+];
+
+/**
+ * The most popular sights within a radius, strictly inside it. A text search
+ * ranks either by distance (minor chapels first) or by relevance (anywhere in
+ * the city); a nearby search by popularity returns the Trevi Fountain and
+ * Piazza Navona for the Pantheon, which is what a walk needs.
+ */
+export async function findSightsNearby(center: LatLng, radiusMeters: number): Promise<PlaceCandidate[]> {
+  const apiKey = requireApiKey();
+  const response = await fetch('https://places.googleapis.com/v1/places:searchNearby', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': SEARCH_FIELDS },
+    body: JSON.stringify({
+      includedTypes: SIGHT_TYPES,
+      maxResultCount: 15,
+      rankPreference: 'POPULARITY',
+      languageCode: 'it',
+      locationRestriction: { circle: { center: { latitude: center.lat, longitude: center.lng }, radius: Math.min(5000, Math.max(100, radiusMeters)) } },
+    }),
+  });
+  const data = await response.json() as { places?: GooglePlacePayload[]; error?: { message?: string } };
+  if (!response.ok) {
+    throw new PlacesError('PLACES_UPSTREAM_ERROR', data.error?.message || 'Places non disponibile.', response.status);
+  }
+  return (data.places || []).map((place) => candidateFrom(place, center)).filter((place): place is PlaceCandidate => place !== null);
 }
 
 const HUB_FIELDS = ['places.id', 'places.displayName', 'places.types', 'places.location'].join(',');

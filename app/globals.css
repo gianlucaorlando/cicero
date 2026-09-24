@@ -1379,3 +1379,70 @@ h1 {
 .place-popup-name { font-size: 15px; line-height: 1.25; }
 .place-popup-facts { color: var(--muted-foreground); font-size: 12px; line-height: 1.35; }
 .place-popup-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+/* Proposed walk: numbered like the route, dashed and hollow until the user approves it */
+.map-preview-marker {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 33px;
+  height: 33px;
+  padding: 0;
+  border: 2px dashed #d45126;
+  border-radius: 50%;
+  background: #fffaf2;
+  color: #b8441f;
+  box-shadow: 0 4px 12px rgba(67, 45, 31, .22);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+.map-preview-marker::after { position: absolute; inset: -6px; content: ''; }
+.map-preview-marker:focus-visible { outline: 3px solid rgba(212, 81, 38, .35); outline-offset: 2px; }
+
+.route-proposal-card .proposal-head [data-slot="badge"] svg { width: 12px; height: 12px; }
+.route-proposal-summary { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 0; }
+.route-proposal-summary strong { font-size: 17px; letter-spacing: -0.01em; line-height: 1.25; }
+.route-proposal-summary small { color: var(--muted-foreground); font-size: 12.5px; }
+.route-proposal-list { display: flex; flex-direction: column; margin: 4px 0 0; padding: 0; list-style: none; }
+.route-proposal-list li { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: center; gap: 10px; }
+.route-proposal-list li:not(:last-child)::after {
+  position: absolute;
+  top: 34px;
+  bottom: -6px;
+  left: 13px;
+  border-left: 2px dashed #dcb9a4;
+  content: '';
+}
+.route-proposal-number {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 2px dashed #d45126;
+  border-radius: 50%;
+  background: #fffaf2;
+  color: #b8441f;
+  font-size: 11px;
+  font-weight: 800;
+}
+.route-proposal-list button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.route-proposal-list button > span { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.route-proposal-list button strong { overflow: hidden; font-size: 14px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.route-proposal-list button small { color: var(--muted-foreground); font-size: 12px; }
+.route-proposal-list button > svg { flex: none; width: 16px; height: 16px; color: var(--muted-foreground); }
+.route-proposal-list button:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 10px; }

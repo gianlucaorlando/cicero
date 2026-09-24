@@ -1,4 +1,5 @@
-import { findTransitHubs, searchPlaces, type TransitHub } from '@/lib/server/places';
+import { WALK_RADIUS_METERS } from '@/lib/route-planner';
+import { findSightsNearby, findTransitHubs, searchPlaces, type TransitHub } from '@/lib/server/places';
 import type { AreaInfo, AreaKind, Discovery, DiscoveryCategory, DiscoveryPlace, LatLng, PlaceCandidate } from '@/lib/types';
 
 /**
@@ -117,7 +118,24 @@ export async function discoverNearby(origin: LatLng, now = Date.now()): Promise<
   return discovery;
 }
 
-/** Test hook: the cache is module state. */
+const sightsCache = new Map<string, { expires: number; places: PlaceCandidate[] }>();
+
+/**
+ * Sights within walking distance of one place, for the walk Cicerone offers
+ * when the user picks a monument. Cached per place: the same monument chosen
+ * again (or by someone else) costs no new search.
+ */
+export async function sightsNear(anchor: { id: string; lat: number; lng: number }, now = Date.now()): Promise<PlaceCandidate[]> {
+  const hit = sightsCache.get(anchor.id);
+  if (hit && hit.expires > now) return hit.places;
+  const places = await findSightsNearby({ lat: anchor.lat, lng: anchor.lng }, WALK_RADIUS_METERS);
+  sightsCache.set(anchor.id, { expires: now + CACHE_TTL_MS, places });
+  if (sightsCache.size > 500) sightsCache.clear();
+  return places;
+}
+
+/** Test hook: the caches are module state. */
 export function clearDiscoveryCache() {
   cache.clear();
+  sightsCache.clear();
 }

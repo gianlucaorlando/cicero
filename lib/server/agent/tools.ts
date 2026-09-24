@@ -2,9 +2,12 @@ import type Anthropic from '@anthropic-ai/sdk';
 
 import { candidateLetter, formatRating, humanReviewCount, priceLabel, shiftTime } from '@/lib/format';
 import { distanceMeters, humanDistance } from '@/lib/geo';
+import { isSightType } from '@/lib/place-kinds';
 import { preferenceCategories, type PreferenceCategory } from '@/lib/profile';
+import { planSightsWalk } from '@/lib/route-planner';
+import { sightsNear } from '@/lib/server/discover';
 import { getPlaceDetails, PlacesError, searchPlaces } from '@/lib/server/places';
-import type { ChatAction, ChatContext, LatLng, PlaceCandidate, PlaceDetails, ProfilePatch, Stop } from '@/lib/types';
+import type { ChatAction, ChatContext, LatLng, PlaceCandidate, PlaceDetails, ProfilePatch, RouteProposal, Stop } from '@/lib/types';
 
 const MAX_STOPS = 20;
 const FIRST_STOP_OFFSET_MINUTES = 15;
@@ -49,7 +52,7 @@ export const AGENT_TOOLS: Anthropic.Beta.BetaTool[] = [
   },
   {
     name: 'dismiss_proposal',
-    description: 'Ritira la proposta in sospeso e nasconde i risultati, quando l\'utente chiude la conversazione o rifiuta senza volere alternative.',
+    description: 'Ritira la proposta in sospeso (anche un percorso proposto) e nasconde i risultati, quando l\'utente chiude la conversazione o rifiuta senza volere alternative.',
     input_schema: { type: 'object', additionalProperties: false, properties: {}, required: [] },
   },
   {
@@ -71,7 +74,7 @@ export const AGENT_TOOLS: Anthropic.Beta.BetaTool[] = [
   },
   {
     name: 'add_stops',
-    description: 'Verifica i dettagli su Google Places e aggiunge una o più tappe in coda all\'itinerario. Accetta place_id oppure la lettera di un\'opzione mostrata.',
+    description: 'Verifica i dettagli su Google Places e aggiunge una o più tappe in coda all\'itinerario. Accetta place_id oppure la lettera di un\'opzione mostrata. Se aggiungi un solo monumento e ce ne sono altri a pochi passi, il sistema propone da solo all\'utente un percorso tra quei luoghi: il risultato te lo dice.',
     input_schema: {
       type: 'object',
       additionalProperties: false,
@@ -251,11 +254,16 @@ export class AgentSession {
   private details = 0;
   /** Points of interest already on the map: they can be proposed without paying for a search. */
   private discovery: PlaceCandidate[];
+  /** The walk through nearby sights waiting for the user's answer, if any. */
+  private routeProposal: RouteProposal | null;
+  /** A walk offered in this very turn: nothing else may be proposed alongside it. */
+  private walkOffered = false;
 
   constructor(private readonly context: ChatContext) {
     this.itinerary = [...context.itinerary];
     this.candidates = [...context.candidates];
     this.discovery = [...(context.discovery ?? [])];
+    this.routeProposal = context.routeProposal ?? null;
   }
 
   async execute(name: string, rawInput: unknown): Promise<ToolOutcome> {
@@ -397,15 +405,58 @@ export class AgentSession {
     if (added.length) {
       this.candidates = [];
       // Whatever was proposed or listed earlier in this turn is consumed by the choice.
-      this.actions = this.actions.filter((action) => !['set_candidates', 'show_candidates', 'propose'].includes(action.type));
+      this.actions = this.actions.filter((action) => !['set_candidates', 'show_candidates', 'propose', 'propose_route'].includes(action.type));
       this.actions.push({ type: 'add_stops', stops: added });
+
+      const pending = this.routeProposal;
+      const fromPendingWalk = pending !== null && added.some((stop) => pending.stops.some((place) => place.id === stop.placeId));
+      // Approved, trimmed or overtaken by another choice: either way the walk is no longer pending.
+      this.routeProposal = null;
+      // One sight chosen on its own, with others a short walk away: offer the walk as a whole.
+      if (added.length === 1 && !fromPendingWalk && isSightType(added[0].primaryType)) {
+        notes.push(await this.offerWalkFrom(added[0]));
+      }
     }
-    return { content: notes.join('\n'), isError: !added.length };
+    return { content: notes.filter(Boolean).join('\n'), isError: !added.length };
+  }
+
+  /**
+   * Builds the walk from a sight just added through the best sights around it
+   * and shows it to the user as one proposal. Returns the note for the model,
+   * or an empty string when there are not enough sights close by.
+   */
+  private async offerWalkFrom(anchorStop: Stop): Promise<string> {
+    const anchor = { id: anchorStop.placeId || anchorStop.id, lat: anchorStop.lat, lng: anchorStop.lng };
+    const excluded = new Set(this.itinerary.map((stop) => stop.placeId || stop.id));
+    let pool: PlaceCandidate[] = [...this.discovery, ...this.candidates];
+    // A search around the monument finds far better company than the map around the user;
+    // with no search budget left, the walk is built from what is already known.
+    if (this.spend('search')) {
+      try {
+        pool = [...await sightsNear(anchor), ...pool];
+      } catch (error) {
+        console.error('sights near failed', error instanceof Error ? error.message : error);
+      }
+    }
+    const walk = planSightsWalk(anchor, pool, excluded);
+    if (!walk) return '';
+
+    const route: RouteProposal = { anchor: { ...anchor, name: anchorStop.title }, stops: walk.stops, distanceMeters: walk.distanceMeters };
+    this.routeProposal = route;
+    this.walkOffered = true;
+    this.actions = this.actions.filter((action) => action.type !== 'propose' && action.type !== 'propose_route');
+    this.actions.push({ type: 'propose_route', route });
+    const steps = walk.stops.map((place) => `${place.name} [place_id ${place.id}] a ${humanDistance(place.distanceMeters)}`).join(' → ');
+    return `Percorso proposto all'utente, in attesa di approvazione, da ${anchorStop.title}: ${steps}; ${humanDistance(walk.distanceMeters)} a piedi in tutto. `
+      + 'Nel messaggio conferma l\'aggiunta in mezza frase, nomina queste tappe in ordine e chiedi se approva il percorso. Non proporre altro in questo turno.';
   }
 
   private proposeStop(input: Record<string, unknown>): ToolOutcome {
+    if (this.walkOffered) {
+      return { isError: true, content: 'In questo turno hai già proposto un percorso tra i monumenti vicini: aspetta la risposta dell\'utente prima di proporre altro.' };
+    }
     const placeId = typeof input.place === 'string' ? this.resolvePlaceId(input.place) : null;
-    let candidate = this.candidates.find((item) => item.id === placeId);
+    let candidate = this.candidates.find((item) => item.id === placeId) ?? this.routeProposal?.stops.find((item) => item.id === placeId);
     if (!candidate) {
       // A point of interest already shown on the map is verified data: no new search needed,
       // and the others on the map become the alternatives behind "Un'altra".
@@ -421,6 +472,8 @@ export class AgentSession {
 
     const reason = typeof input.reason === 'string' ? input.reason.trim().slice(0, 200) : '';
     const alternatives = this.candidates.filter((item) => item.id !== candidate.id);
+    // A single proposal replaces a pending walk: the user is answering one question at a time.
+    this.routeProposal = null;
     // Keep the proposal first so letters in the context stay aligned with what the user sees.
     this.candidates = [candidate, ...alternatives];
     this.actions = this.actions.filter((action) => !['set_candidates', 'show_candidates', 'propose'].includes(action.type));
@@ -430,7 +483,8 @@ export class AgentSession {
 
   private dismissProposal(): ToolOutcome {
     this.candidates = [];
-    this.actions = this.actions.filter((action) => !['set_candidates', 'show_candidates', 'propose'].includes(action.type));
+    this.routeProposal = null;
+    this.actions = this.actions.filter((action) => !['set_candidates', 'show_candidates', 'propose', 'propose_route'].includes(action.type));
     this.actions.push({ type: 'dismiss_proposal' });
     return { content: 'Proposta ritirata, nessun risultato in vista.' };
   }

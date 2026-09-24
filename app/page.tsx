@@ -35,6 +35,9 @@ function hideSplash() {
 /** How long "Annulla" stays available after the user takes a stop out of the route. */
 const UNDO_REMOVAL_MS = 8000;
 
+/** One shared empty list: a fresh [] on every render would re-frame the map each time. */
+const NO_PLACES: PlaceCandidate[] = [];
+
 const footerNotes: Record<ChatMode, string> = {
   unknown: 'Claude + Google Places · nessun luogo inventato',
   ready: 'Claude + Google Places · nessun luogo inventato',
@@ -97,7 +100,8 @@ export default function Home() {
 
   const { profile: syncedProfile } = profileSync;
   const profile = testProfile ?? syncedProfile;
-  const { itinerary, candidates, listed, proposal, suggestions } = conversation;
+  const { itinerary, candidates, listed, proposal, routeProposal, suggestions } = conversation;
+  const routePreview = routeProposal?.stops ?? NO_PLACES;
   const alternativesOpen = proposal !== null && alternativesOpenFor === proposal.candidate.id;
   /**
    * Pins on the map: only the proposed one while a proposal stands, all of them
@@ -134,9 +138,10 @@ export default function Home() {
     setRemoval(null);
   }
 
-  /** Points of interest still worth a pin: not already a stop, and not already shown as a proposal. */
+  /** Points of interest still worth a pin: not already a stop, and not already shown as a proposal or in a proposed walk. */
   const discoveryPins = useMemo(() => discovery.places.filter((place) => !itinerary.some((stop) => stop.placeId === place.id)
-    && !visibleCandidates.some((candidate) => candidate.id === place.id)), [discovery.places, itinerary, visibleCandidates]);
+    && !visibleCandidates.some((candidate) => candidate.id === place.id)
+    && !routePreview.some((stop) => stop.id === place.id)), [discovery.places, itinerary, routePreview, visibleCandidates]);
 
   const buildContext = useCallback((overrides: Partial<TurnContext> = {}): TurnContext => ({
     city,
@@ -230,19 +235,33 @@ export default function Home() {
     void ask(`Aggiungi ${place.name} al percorso.`);
   }
 
-  /** The one action a place offers, wherever it is opened: accept, choose or add. */
-  function primaryActionFor(place: PlaceCandidate): (PopupAction & { onDecline?: () => void }) | null {
+  function acceptRoute() {
+    setDetailPlace(null);
+    if (routeProposal) void ask('Sì, approvo il percorso.');
+  }
+
+  function declineRoute() {
+    setDetailPlace(null);
+    if (routeProposal) void ask('No, grazie: niente giro.');
+  }
+
+  /** The one action a place offers, wherever it is opened: accept, choose, approve the walk or add. */
+  function primaryActionFor(place: PlaceCandidate): (PopupAction & { onDecline?: () => void; declineLabel?: string }) | null {
     if (proposal && place.id === proposal.candidate.id) {
       return { label: 'Sì, aggiungila', kind: 'accept', onClick: acceptProposal, onDecline: declineProposal };
     }
-    if (candidates.some((item) => item.id === place.id)) return { label: 'Scegli questo', kind: 'accept', onClick: () => selectCandidate(place) };
-    const poi = discovery.places.find((item) => item.id === place.id);
+    if (routePreview.some((stop) => stop.id === place.id)) {
+      return { label: 'Approva il percorso', kind: 'accept', onClick: acceptRoute, onDecline: declineRoute, declineLabel: 'No, grazie' };
+    }
+    // A pin on the map reads as "add it", even when the place also sits among a proposal's hidden alternatives.
+    const poi = discoveryPins.find((item) => item.id === place.id);
     if (poi) return { label: 'Aggiungi al percorso', kind: 'add', onClick: () => addDiscovery(poi) };
+    if (candidates.some((item) => item.id === place.id)) return { label: 'Scegli questo', kind: 'accept', onClick: () => selectCandidate(place) };
     return null;
   }
 
-  const popupPlace = useMemo(() => [...visibleCandidates, ...discoveryPins].find((place) => place.id === popupPlaceId) ?? null,
-    [discoveryPins, popupPlaceId, visibleCandidates]);
+  const popupPlace = useMemo(() => [...visibleCandidates, ...routePreview, ...discoveryPins].find((place) => place.id === popupPlaceId) ?? null,
+    [discoveryPins, popupPlaceId, routePreview, visibleCandidates]);
   const popupPrimary = popupPlace ? primaryActionFor(popupPlace) : null;
   const mapPopup = popupPlace ? {
     key: popupPlace.id,
@@ -350,6 +369,7 @@ export default function Home() {
         onOpenCandidate={(candidate) => setPopupPlaceId(candidate.id)}
         discovery={discoveryPins}
         onOpenDiscovery={(place) => setPopupPlaceId(place.id)}
+        routePreview={routePreview}
         popup={mapPopup}
         onPopupClose={() => setPopupPlaceId(null)}
         focusToken={routeFocusToken}
@@ -385,6 +405,9 @@ export default function Home() {
         proposal={proposal}
         onAcceptProposal={acceptProposal}
         onDeclineProposal={declineProposal}
+        routeProposal={routeProposal}
+        onAcceptRoute={acceptRoute}
+        onDeclineRoute={declineRoute}
         alternativesOpen={alternativesOpen}
         onToggleAlternatives={toggleAlternatives}
         onOpenPlace={setDetailPlace}
@@ -407,7 +430,12 @@ export default function Home() {
       <PlaceSheet
         place={detailPlace}
         reason={detailIsProposal ? proposal?.reason : undefined}
-        actions={detailPrimary ? { acceptLabel: detailPrimary.label, onAccept: detailPrimary.onClick, onDecline: detailPrimary.onDecline } : undefined}
+        actions={detailPrimary ? {
+          acceptLabel: detailPrimary.label,
+          onAccept: detailPrimary.onClick,
+          onDecline: detailPrimary.onDecline,
+          declineLabel: detailPrimary.declineLabel,
+        } : undefined}
         busy={conversation.thinking}
         onOpenChange={(open) => { if (!open) setDetailPlace(null); }}
       />

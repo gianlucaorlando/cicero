@@ -122,3 +122,31 @@ describe('restoreStop', () => {
     expect(restoreStop(route, { stop: sameplace, index: 0 })).toBe(route);
   });
 });
+
+describe('walk proposals', () => {
+  const walk = { anchor: { id: 'a', name: 'Pantheon', lat: 41.9, lng: 12.48 }, stops: [candidate('b'), candidate('c')], distanceMeters: 500 };
+
+  it('a walk proposed right after adding its monument stays pending', () => {
+    const next = applyActions(emptyPlan, [{ type: 'add_stops', stops: [stop('a')] }, { type: 'propose_route', route: walk }]);
+    expect(next.itinerary.map((s) => s.id)).toEqual(['a']);
+    expect(next.routeProposal).toEqual(walk);
+    expect(next.proposal).toBeNull();
+  });
+
+  it('adding stops consumes the walk, and a single proposal or a dismissal replaces it', () => {
+    const pending = { ...emptyPlan, routeProposal: walk };
+    expect(applyActions(pending, [{ type: 'add_stops', stops: [stop('b'), stop('c')] }]).routeProposal).toBeNull();
+    const proposed = applyActions(pending, [{ type: 'propose', proposal: { candidate: candidate('x'), reason: '', alternatives: [] } }]);
+    expect(proposed.routeProposal).toBeNull();
+    expect(proposed.proposal?.candidate.id).toBe('x');
+    expect(applyActions(pending, [{ type: 'dismiss_proposal' }]).routeProposal).toBeNull();
+  });
+
+  it('a walk replaces a single proposal', () => {
+    const proposing = applyActions(emptyPlan, [{ type: 'propose', proposal: { candidate: candidate('x'), reason: '', alternatives: [] } }]);
+    const next = applyActions(proposing, [{ type: 'propose_route', route: walk }]);
+    expect(next.proposal).toBeNull();
+    expect(next.candidates).toEqual([]);
+    expect(next.routeProposal).toEqual(walk);
+  });
+});

@@ -21,6 +21,8 @@ type Props = {
   /** Points of interest shown since the app opened, not yet chosen or proposed. */
   discovery: DiscoveryPlace[];
   onOpenDiscovery: (place: DiscoveryPlace) => void;
+  /** A proposed walk through nearby sights, drawn dashed after the route until approved. */
+  routePreview: PlaceCandidate[];
   popup: MapPopup;
   onPopupClose: () => void;
   focusToken: number;
@@ -49,6 +51,7 @@ export function MapStage({
   onOpenCandidate,
   discovery,
   onOpenDiscovery,
+  routePreview,
   popup,
   onPopupClose,
   focusToken,
@@ -86,6 +89,12 @@ export function MapStage({
         onOpenDiscovery={(placeId) => {
           const place = discovery.find((item) => item.id === placeId);
           if (place) onOpenDiscovery(place);
+        }}
+        preview={routePreview}
+        previewStartNumber={stops.length + 1}
+        onOpenPreview={(placeId) => {
+          const place = routePreview.find((item) => item.id === placeId);
+          if (place) onOpenCandidate(place);
         }}
         popup={popup}
         onPopupClose={onPopupClose}

@@ -43,11 +43,17 @@ export function walkingMinutes(distanceMeters: number) {
   return Math.max(1, Math.round(distanceMeters / WALKING_METERS_PER_MINUTE));
 }
 
-/** Time at the stops plus walking between them, rounded for display. */
-export function estimatedDuration(origin: LatLng, stops: Stop[]) {
-  const minutes = stops.length * MINUTES_PER_STOP + Math.round(itineraryDistance(origin, stops) / WALKING_METERS_PER_MINUTE);
+/** Time at the stops plus the walk, to the nearest 5 minutes: "circa 2 h 15 min". An estimate should not read like a timetable. */
+export function durationLabel(stopCount: number, walkingMeters: number) {
+  const exact = stopCount * MINUTES_PER_STOP + walkingMeters / WALKING_METERS_PER_MINUTE;
+  const minutes = Math.max(5, Math.round(exact / 5) * 5);
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   if (!hours) return `circa ${rest} min`;
   return rest ? `circa ${hours} h ${rest} min` : `circa ${hours} h`;
+}
+
+/** Time at the stops plus walking between them, rounded for display. */
+export function estimatedDuration(origin: LatLng, stops: Stop[]) {
+  return durationLabel(stops.length, itineraryDistance(origin, stops));
 }

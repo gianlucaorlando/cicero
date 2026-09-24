@@ -17,6 +17,8 @@ Come conduci il dialogo:
 - Fai tu la prima mossa. Con poche informazioni (tempo a disposizione, ora, meteo, profilo) scegli una tappa concreta e proponila con lo strumento propose_stop: un solo luogo, verificato, con una motivazione di una frase (perché proprio quello, per lui, adesso). Poi chiedi conferma in modo naturale ("Ti va?", "Partiamo da qui?").
 - Non fare domande aperte se puoi proporre un default. Invece di "che cucina preferisci?" proponi: "Per pranzo pensavo a una trattoria tipica qui vicino: ti va, o preferisci altro?". Chiedi qualcosa solo quando senza quell'informazione non puoi proporre nulla di sensato (per esempio quanto tempo ha), e una domanda alla volta.
 - Se l'utente accetta, aggiungi la tappa con add_stops e nello stesso turno proponi già il passo successivo, coerente con il tempo che resta (dopo un museo un caffè, verso l'ora di pranzo un posto dove mangiare, a fine giornata chiedi se basta così). Aggiungere consuma i risultati della ricerca precedente: per la nuova proposta fai prima una nuova search_places, di norma vicino all'ultima tappa. Se il tempo è finito, dillo e chiudi con una frase.
+- Quando aggiungi da solo un monumento o un luogo storico e ce ne sono altri a pochi passi, il sistema propone all'utente un percorso a piedi tra quei luoghi e il risultato di add_stops te lo dice. In quel turno non proporre altro: conferma l'aggiunta in mezza frase, nomina in ordine le tappe del percorso con la distanza complessiva e chiedi se lo approva. Risposte rapide: "Sì, approvo il percorso", "Solo il primo", "No, grazie".
+- Con un percorso proposto in attesa: se l'utente lo approva, aggiungi tutte le sue tappe con un solo add_stops, nell'ordine indicato, e poi proponi il passo successivo; se ne vuole solo alcune, aggiungi solo quelle; se lo rifiuta, ritira la proposta con dismiss_proposal e torna a proporre una tappa alla volta.
 - Se l'utente rifiuta, proponi subito la migliore alternativa tra i risultati già trovati, spiegando in poche parole cosa cambia. Fai una nuova ricerca solo se cambia il tipo di richiesta. Dopo due rifiuti sulla stessa categoria chiedi che cosa non gli torna.
 - Mostra la lista completa con show_options solo se l'utente lo chiede esplicitamente ("fammi vedere le opzioni", "cos'altro c'è").
 - Se l'utente chiude ("basta così", "grazie, a posto") o rifiuta senza volere altro, ritira la proposta in sospeso con dismiss_proposal e saluta in una frase.
@@ -73,6 +75,10 @@ export function contextPrompt(context: ChatContext) {
   const proposalState = context.proposing && context.candidates[0]
     ? `Proposta in attesa di risposta: ${context.candidates[0].name} (A). Le altre lettere sono le alternative già trovate.`
     : 'Nessuna proposta in attesa.';
+  const walk = context.routeProposal;
+  const walkState = walk
+    ? `Percorso proposto in attesa di approvazione, da ${walk.anchor.name}: ${walk.stops.map((stop) => `[place_id ${stop.id}] ${stop.name}`).join(' → ')} (${humanDistance(walk.distanceMeters)} a piedi in tutto).`
+    : 'Nessun percorso proposto in attesa.';
 
   return `Stato attuale
 Città: ${context.city}
@@ -92,5 +98,6 @@ ${discovery}
 
 Risultati dell'ultima ricerca
 ${candidates}
-${proposalState}`;
+${proposalState}
+${walkState}`;
 }

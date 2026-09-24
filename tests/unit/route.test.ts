@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { distanceMeters } from '@/lib/geo';
-import { estimatedDuration, framingPoints, mapBanner, walkingMinutes } from '@/lib/route';
+import { durationLabel, estimatedDuration, framingPoints, mapBanner, walkingMinutes } from '@/lib/route';
 import type { Stop } from '@/lib/types';
 
 const piazzaVenezia = { lat: 41.8959, lng: 12.4823 };
@@ -79,14 +79,21 @@ describe('route estimates', () => {
     expect(walkingMinutes(800)).toBe(10);
   });
 
-  it('adds time at the stops to the walking time', () => {
+  it('adds time at the stops to the walking time, to the nearest 5 minutes', () => {
     const route = [stop('pantheon', pantheon), stop('colosseo', colosseo)];
-    const walking = Math.round((distanceMeters(piazzaVenezia, pantheon) + distanceMeters(pantheon, colosseo)) / 80);
-    const total = 2 * 45 + walking;
+    const walking = (distanceMeters(piazzaVenezia, pantheon) + distanceMeters(pantheon, colosseo)) / 80;
+    const total = Math.round((2 * 45 + walking) / 5) * 5;
     const expected = total % 60
       ? `circa ${Math.floor(total / 60)} h ${total % 60} min`
       : `circa ${Math.floor(total / 60)} h`;
     expect(estimatedDuration(piazzaVenezia, route)).toBe(expected);
+  });
+
+  it('rounds estimates to 5 minutes and never shows less than 5', () => {
+    expect(durationLabel(3, 1100)).toBe('circa 2 h 30 min');
+    expect(durationLabel(1, 0)).toBe('circa 45 min');
+    expect(durationLabel(0, 40)).toBe('circa 5 min');
+    expect(durationLabel(4, 0)).toBe('circa 3 h');
   });
 
   it('stays in minutes for a short route', () => {
