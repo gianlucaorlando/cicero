@@ -1,5 +1,5 @@
 import type { Profile } from '@/lib/profile';
-import type { ChatAction, PlaceCandidate, Proposal, Stop } from '@/lib/types';
+import type { ChatAction, PlaceCandidate, Proposal, RouteProposal, Stop } from '@/lib/types';
 
 /** What the panel observes after a turn: agent output, app state and rendered DOM. */
 export type StepSnapshot = {
@@ -8,17 +8,28 @@ export type StepSnapshot = {
   itinerary: Stop[];
   candidates: PlaceCandidate[];
   proposal: Proposal | null;
+  /** A walk through nearby sights waiting for a yes. */
+  routeProposal: RouteProposal | null;
   suggestions: string[];
   profile: Profile;
   dom: {
     stopMarkers: number;
     candidateMarkers: number;
+    /** Hollow numbered pins of a proposed walk. */
+    previewMarkers: number;
     itineraryRows: number;
     placesCard: boolean;
     proposalCard: boolean;
+    routeProposalCard: boolean;
     suggestionChips: number;
     userMessages: number;
     lastAssistantText: string;
+    /** Whatever the device: nothing may scroll sideways. */
+    horizontalOverflow: boolean;
+    /** With the chat scrolled to the end, the "yes" of the card on screen is fully visible; null without a card. */
+    decisionVisible: boolean | null;
+    /** Buttons and links too small for their pointer: under 40px on touch screens, 24px with a mouse. */
+    smallTargets: string[];
   };
   durationMs: number;
 };
@@ -83,7 +94,66 @@ const proposalOrQuestion: Check = {
 
 const noProposal: Check = {
   label: 'Nessuna proposta o lista residua',
-  pass: (s) => s.proposal === null && s.candidates.length === 0 && !s.dom.proposalCard && !s.dom.placesCard && s.dom.candidateMarkers === 0,
+  pass: (s) => s.proposal === null && s.routeProposal === null && s.candidates.length === 0
+    && !s.dom.proposalCard && !s.dom.routeProposalCard && !s.dom.placesCard && s.dom.candidateMarkers === 0 && s.dom.previewMarkers === 0,
+};
+
+// ---------------------------------------------------------------------------
+// Walks through nearby sights
+// ---------------------------------------------------------------------------
+
+const walkShown: Check = {
+  label: 'Un giro tra i monumenti vicini è proposto (scheda e pin tratteggiati)',
+  pass: (s) => s.routeProposal !== null && s.routeProposal.stops.length >= 2 && s.dom.routeProposalCard
+    && s.dom.previewMarkers === s.routeProposal.stops.length && s.proposal === null && !s.dom.proposalCard,
+};
+
+const walkApproved: Check = {
+  label: 'Il sì aggiunge tutte le tappe del giro, nell\'ordine proposto',
+  pass: (s, previous) => {
+    const walk = previous?.routeProposal;
+    if (!walk) return false;
+    const added = s.itinerary.slice(previous!.itinerary.length).map((stop) => stop.placeId);
+    return added.length >= walk.stops.length
+      && walk.stops.every((stop, index) => added[index] === stop.id)
+      && s.dom.previewMarkers === 0 && !s.dom.routeProposalCard;
+  },
+};
+
+const walkTrimmedTo = (count: number): Check => ({
+  label: `Del giro entra${count === 1 ? ' solo la prima tappa' : `no le prime ${count} tappe`}`,
+  pass: (s, previous) => {
+    const walk = previous?.routeProposal;
+    if (!walk) return false;
+    const added = s.itinerary.slice(previous!.itinerary.length).map((stop) => stop.placeId);
+    return added.length === count && walk.stops.slice(0, count).every((stop, index) => added[index] === stop.id)
+      && s.dom.previewMarkers === 0;
+  },
+});
+
+const walkDismissed: Check = {
+  label: 'Il no ritira il giro e non aggiunge nulla',
+  pass: (s, previous) => previous?.routeProposal != null && s.routeProposal === null
+    && s.dom.previewMarkers === 0 && !s.dom.routeProposalCard && s.itinerary.length === previous.itinerary.length,
+};
+
+// ---------------------------------------------------------------------------
+// Layout, checked on every step: run the suite on a phone to make them bite
+// ---------------------------------------------------------------------------
+
+const noSidewaysScroll: Check = {
+  label: 'Nessuno scorrimento orizzontale',
+  pass: (s) => !s.dom.horizontalOverflow,
+};
+
+const decisionReachable: Check = {
+  label: 'Il sì della proposta è interamente visibile senza scorrere',
+  pass: (s) => s.dom.decisionVisible !== false,
+};
+
+const fingerSizedTargets: Check = {
+  label: 'Pulsanti e link abbastanza grandi per il dispositivo',
+  pass: (s) => s.dom.smallTargets.length === 0,
 };
 
 const noVisibleUserMessage: Check = {
@@ -149,7 +219,9 @@ const guiMatchesState: Check = {
   label: 'Pin e righe della GUI coincidono con lo stato',
   pass: (s) => s.dom.stopMarkers === s.itinerary.length
     && s.dom.itineraryRows === s.itinerary.length
-    && s.dom.candidateMarkers === (s.proposal ? 1 : s.candidates.length),
+    && s.dom.candidateMarkers === (s.proposal ? 1 : s.candidates.length)
+    && s.dom.previewMarkers === (s.routeProposal?.stops.length ?? 0)
+    && s.dom.routeProposalCard === (s.routeProposal !== null),
 };
 
 const profileFlag = (key: 'slowPace' | 'avoidQueues' | 'noFish' | 'markets', label: string): Check => ({
@@ -205,9 +277,45 @@ const timesShiftedBy = (minutes: number): Check => ({
 // ---------------------------------------------------------------------------
 
 const single = (title: string, steps: Step[]): Session[] => [{ title, steps }];
-const base = [replied, within(60_000), offersReplies];
+const base = [replied, within(60_000), offersReplies, noSidewaysScroll, decisionReachable, fingerSizedTargets];
 
 export const scenarios: Scenario[] = [
+  {
+    id: 'walk-approved',
+    title: 'Un monumento, poi il giro tra quelli vicini',
+    description: 'Scelgo il Pantheon: Cicerone propone da solo un giro tra i monumenti a pochi passi, io lo approvo con un sì.',
+    sessions: single('Sessione unica', [
+      {
+        say: 'Aggiungi il Pantheon al percorso.',
+        checks: [...base, stopsEqual(1), walkShown, guiMatchesState],
+      },
+      {
+        say: 'Sì, approvo il percorso.',
+        checks: [...base, walkApproved, guiMatchesState],
+      },
+    ]),
+  },
+  {
+    id: 'walk-trimmed-or-declined',
+    title: 'Giro proposto: solo il primo, poi un no',
+    description: 'Prima prendo solo la prima tappa del giro; in una seconda visita rifiuto il giro e tengo il monumento.',
+    sessions: [
+      {
+        title: 'Sessione 1 · solo il primo',
+        steps: [
+          { say: 'Aggiungi il Pantheon al percorso.', checks: [...base, stopsEqual(1), walkShown, guiMatchesState] },
+          { say: 'Solo il primo.', checks: [...base, walkTrimmedTo(1), stopsEqual(2), guiMatchesState] },
+        ],
+      },
+      {
+        title: 'Sessione 2 · no grazie',
+        steps: [
+          { say: 'Aggiungi la Fontana di Trevi al percorso.', checks: [...base, stopsEqual(1), walkShown, guiMatchesState] },
+          { say: 'No, grazie.', checks: [...base, walkDismissed, stopsEqual(1), guiMatchesState] },
+        ],
+      },
+    ],
+  },
   {
     id: 'opening-move',
     title: 'Apertura: Cicerone parla per primo',

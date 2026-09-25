@@ -6,7 +6,7 @@ import { Check, Copy, FlaskConical, LocateFixed, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createEmptyProfile, type Profile } from '@/lib/profile';
 import { scenarios, type Scenario, type Step, type StepSnapshot } from '@/lib/testing/scenarios';
-import type { ChatResponse, PlaceCandidate, Proposal, Stop } from '@/lib/types';
+import type { ChatResponse, PlaceCandidate, Proposal, RouteProposal, Stop } from '@/lib/types';
 
 type StepResult = {
   say: string;
@@ -26,6 +26,7 @@ type Props = {
   itinerary: Stop[];
   candidates: PlaceCandidate[];
   proposal: Proposal | null;
+  routeProposal: RouteProposal | null;
   suggestions: string[];
   profile: Profile;
   /** Sets the run's throwaway profile; null hands the app back its real, synced one. */
@@ -34,25 +35,91 @@ type Props = {
   onClose: () => void;
 };
 
-const SETTLE_MS = 250;
+/** Long enough for React, the map markers and the chat's smooth scroll to catch up with a turn. */
+const SETTLE_MS = 900;
 const SESSION_RESET_MS = 400;
+/** The run survives a reload of the page (HMR, a crash): it is kept for the tab's lifetime. */
+const STORAGE_KEY = 'cicerone-test-run-v1';
 
 function settle(ms = SETTLE_MS) {
   return new Promise<void>((resolve) => { setTimeout(resolve, ms); });
 }
 
+function isVisible(element: Element) {
+  const box = element.getBoundingClientRect();
+  const style = getComputedStyle(element);
+  return box.width > 0 && box.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+}
+
+function inside(element: Element, container: Element) {
+  const a = element.getBoundingClientRect();
+  const b = container.getBoundingClientRect();
+  return a.top >= b.top - 1 && a.bottom <= b.bottom + 1 && a.left >= b.left - 1 && a.right <= b.right + 1;
+}
+
+/**
+ * Controls a finger cannot hit reliably: under 40px on a touch screen, under
+ * 24px (WCAG 2.2 AA) with a mouse. Map pins and the drag handle carry an
+ * invisible larger touch area, so they are measured by that instead.
+ */
+function smallTargets() {
+  const minimum = window.matchMedia?.('(pointer: coarse)').matches ? 40 : 24;
+  const selector = [
+    '.conversation button', '.conversation a[href]', '.place-popup button',
+    '[data-slot="sheet-content"] button', '[data-slot="sheet-content"] a[href]',
+    '.topbar button', '.route-summary', '.locate-button',
+  ].join(', ');
+  return Array.from(document.querySelectorAll<HTMLElement>(selector))
+    .filter((element) => isVisible(element) && !element.closest('.test-panel') && !element.matches('.drag-handle-button'))
+    .filter((element) => {
+      const box = element.getBoundingClientRect();
+      return box.height < minimum || box.width < minimum;
+    })
+    .map((element) => {
+      const box = element.getBoundingClientRect();
+      const name = (element.getAttribute('aria-label') || element.textContent || element.className.toString()).trim().slice(0, 36);
+      return `${name} (${Math.round(box.width)}×${Math.round(box.height)})`;
+    });
+}
+
 function readDom(): StepSnapshot['dom'] {
   const assistant = Array.from(document.querySelectorAll<HTMLElement>('.assistant-message:not(.thinking-message) .message-content p'));
+  // Where the chat ends up after its smooth scroll, whether or not the animation has run.
+  const messages = document.querySelector('.messages');
+  if (messages) messages.scrollTop = messages.scrollHeight;
+  const yes = document.querySelector('.proposal-card .proposal-actions [data-slot="button"]');
   return {
     stopMarkers: document.querySelectorAll('.map-stop-marker').length,
     candidateMarkers: document.querySelectorAll('.map-candidate-marker').length,
-    itineraryRows: document.querySelectorAll('.itinerary-card ol li').length,
+    previewMarkers: document.querySelectorAll('.map-preview-marker').length,
+    itineraryRows: document.querySelectorAll('.itinerary-card ol li:not(.stop-removed)').length,
     placesCard: document.querySelector('.places-card') !== null,
-    proposalCard: document.querySelector('.proposal-card') !== null,
+    proposalCard: document.querySelector('.proposal-card:not(.route-proposal-card)') !== null,
+    routeProposalCard: document.querySelector('.route-proposal-card') !== null,
     suggestionChips: document.querySelectorAll('.quick-prompts button').length,
     userMessages: document.querySelectorAll('.user-message').length,
     lastAssistantText: assistant.at(-1)?.textContent || '',
+    horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth + 1,
+    decisionVisible: yes && messages ? inside(yes, messages) : null,
+    smallTargets: smallTargets(),
   };
+}
+
+type SavedRun = { results: ScenarioResult[]; running: boolean };
+
+function loadRun(): SavedRun | null {
+  try {
+    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) as SavedRun : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveRun(run: SavedRun) {
+  try {
+    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(run));
+  } catch { /* storage full or blocked: the run just is not kept across a reload */ }
 }
 
 function emptyResults(selected: Scenario[]): ScenarioResult[] {
@@ -100,17 +167,44 @@ function statusGlyph(status: StepResult['status']) {
  * state and DOM after every turn. Sessions inside a scenario restart the chat
  * but keep the profile, so memory across visits is tested too.
  */
-export function TestPanel({ ask, start, itinerary, candidates, proposal, suggestions, profile, setProfile, reset, onClose }: Props) {
+export function TestPanel({ ask, start, itinerary, candidates, proposal, routeProposal, suggestions, profile, setProfile, reset, onClose }: Props) {
   const [selected, setSelected] = useState<string[]>(scenarios.map((scenario) => scenario.id));
   const [results, setResults] = useState<ScenarioResult[]>([]);
   const [running, setRunning] = useState(false);
   const [copied, setCopied] = useState(false);
-  const latest = useRef({ ask, start, itinerary, candidates, proposal, suggestions, profile });
+  /** A run cut short by a reload: its results are shown, with the step that was running marked. */
+  const [interrupted, setInterrupted] = useState(false);
+  const latest = useRef({ ask, start, itinerary, candidates, proposal, routeProposal, suggestions, profile });
   const cancelled = useRef(false);
 
   useEffect(() => {
-    latest.current = { ask, start, itinerary, candidates, proposal, suggestions, profile };
-  }, [ask, start, itinerary, candidates, proposal, suggestions, profile]);
+    latest.current = { ask, start, itinerary, candidates, proposal, routeProposal, suggestions, profile };
+  }, [ask, start, itinerary, candidates, proposal, routeProposal, suggestions, profile]);
+
+  // Restore the last run of this tab; a run that was still going when the page reloaded is marked.
+  useEffect(() => {
+    const saved = loadRun();
+    if (!saved?.results.length) return;
+    const timeout = window.setTimeout(() => {
+      setInterrupted(saved.running);
+      setResults(saved.running
+        ? saved.results.map((scenario) => ({
+            ...scenario,
+            sessions: scenario.sessions.map((session) => ({
+              ...session,
+              steps: session.steps.map((step) => (step.status === 'running'
+                ? { ...step, status: 'error' as const, failed: ['Interrotto: la pagina si è ricaricata durante il passo'] }
+                : step)),
+            })),
+          }))
+        : saved.results);
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, []);
+
+  useEffect(() => {
+    if (results.length) saveRun({ results, running });
+  }, [results, running]);
 
   const updateStep = useCallback((scenarioIndex: number, sessionIndex: number, stepIndex: number, patch: Partial<StepResult>) => {
     setResults((current) => current.map((scenario, sIndex) => (sIndex !== scenarioIndex ? scenario : {
@@ -126,13 +220,14 @@ export function TestPanel({ ask, start, itinerary, candidates, proposal, suggest
     const started = performance.now();
     const response = step.start ? await latest.current.start() : await latest.current.ask(step.say);
     await settle();
-    const { itinerary: stops, candidates: shown, proposal: proposed, suggestions: replies, profile: current } = latest.current;
+    const { itinerary: stops, candidates: shown, proposal: proposed, routeProposal: walk, suggestions: replies, profile: current } = latest.current;
     const snapshot: StepSnapshot = {
       reply: response?.reply || '',
       actions: response?.actions || [],
       itinerary: stops,
       candidates: shown,
       proposal: proposed,
+      routeProposal: walk,
       suggestions: replies,
       profile: current,
       dom: readDom(),
@@ -149,6 +244,7 @@ export function TestPanel({ ask, start, itinerary, candidates, proposal, suggest
     cancelled.current = false;
     setRunning(true);
     setCopied(false);
+    setInterrupted(false);
     setResults(emptyResults(chosen));
 
     try {
@@ -208,6 +304,10 @@ export function TestPanel({ ask, start, itinerary, candidates, proposal, suggest
         <span>{results.length ? `${totals.pass} ok · ${totals.fail} falliti` : `${selected.length} scenari selezionati`}</span>
         <Button type="button" variant="ghost" size="icon" aria-label="Chiudi il pannello test" onClick={onClose} disabled={running}><X /></Button>
       </header>
+
+      {interrupted && (
+        <p className="test-panel-note" role="alert">L’ultima esecuzione si è interrotta perché la pagina si è ricaricata: qui sotto i risultati fino a quel punto.</p>
+      )}
 
       <div className="test-panel-actions">
         <Button type="button" size="sm" onClick={() => void runAll()} disabled={running || !selected.length}>

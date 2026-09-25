@@ -80,6 +80,7 @@ export const AGENT_TOOLS: Anthropic.Beta.BetaTool[] = [
       additionalProperties: false,
       properties: {
         places: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'string' }, description: 'Place ID o lettere (A, B, C...) delle opzioni mostrate, nell\'ordine di visita.' },
+        offer_walk: { type: 'boolean', description: 'false se l\'utente vuole procedere una tappa alla volta o non vuole percorsi proposti: allora non si propone il giro tra i monumenti vicini. Di default true.' },
       },
       required: ['places'],
     },
@@ -257,6 +258,8 @@ export class AgentSession {
   private routeProposal: RouteProposal | null;
   /** A walk offered in this very turn: nothing else may be proposed alongside it. */
   private walkOffered = false;
+  /** add_stops calls so far in this turn: a walk is offered only for the first one. */
+  private additions = 0;
 
   constructor(private readonly context: ChatContext) {
     this.itinerary = [...context.itinerary];
@@ -347,6 +350,8 @@ export class AgentSession {
   }
 
   private async addStops(input: Record<string, unknown>): Promise<ToolOutcome> {
+    const firstAddition = this.additions === 0;
+    this.additions += 1;
     const references = stringList(input.places, 5);
     if (!references.length) return { isError: true, content: 'Indica almeno un luogo.' };
     if (this.itinerary.length >= MAX_STOPS) return { isError: true, content: `L'itinerario ha già ${MAX_STOPS} tappe.` };
@@ -411,8 +416,12 @@ export class AgentSession {
       const fromPendingWalk = pending !== null && added.some((stop) => pending.stops.some((place) => place.id === stop.placeId));
       // Approved, trimmed or overtaken by another choice: either way the walk is no longer pending.
       this.routeProposal = null;
-      // One sight chosen on its own, with others a short walk away: offer the walk as a whole.
-      if (added.length === 1 && !fromPendingWalk && isSightType(added[0].primaryType)) {
+      // A second addition in the same turn means the user is building the plan: a walk offered
+      // a moment ago is withdrawn (the filter above dropped it) and must not block what follows.
+      this.walkOffered = false;
+      // One sight chosen on its own, with others a short walk away: offer the walk as a whole,
+      // unless the user asked to go one stop at a time.
+      if (firstAddition && input.offer_walk !== false && added.length === 1 && !fromPendingWalk && isSightType(added[0].primaryType)) {
         notes.push(await this.offerWalkFrom(added[0]));
       }
     }

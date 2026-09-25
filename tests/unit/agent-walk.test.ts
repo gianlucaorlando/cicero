@@ -173,3 +173,26 @@ describe('answering a walk', () => {
     expect(contextPrompt(context())).toMatch(/Nessun percorso proposto in attesa/);
   });
 });
+
+describe('walks and a plan built by the user', () => {
+  it('a second addition in the same turn withdraws the walk and lets Cicerone propose again', async () => {
+    const session = new AgentSession(context({ discovery: [{ ...ROSETTA, category: 'food' }] }));
+    await session.execute('add_stops', { places: [PANTHEON.id] });
+    expect(walkOf(session)).not.toBeNull();
+    await session.execute('add_stops', { places: [TREVI.id] });
+    expect(walkOf(session)).toBeNull();
+    // No new walk from the second monument: the user is building the plan themselves.
+    expect(findSightsNearby).toHaveBeenCalledTimes(1);
+    const lunch = await session.execute('propose_stop', { place: ROSETTA.id, reason: 'pranzo vicino' });
+    expect(lunch.isError).toBeUndefined();
+    expect(session.actions.map((action) => action.type)).toEqual(['add_stops', 'add_stops', 'propose']);
+  });
+
+  it('offer_walk false adds the monument without proposing a walk', async () => {
+    const session = new AgentSession(context());
+    const result = await session.execute('add_stops', { places: [PANTHEON.id], offer_walk: false });
+    expect(result.isError).toBe(false);
+    expect(walkOf(session)).toBeNull();
+    expect(findSightsNearby).not.toHaveBeenCalled();
+  });
+});

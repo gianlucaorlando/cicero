@@ -529,6 +529,7 @@ export default function Home() {
           itinerary={itinerary}
           candidates={candidates}
           proposal={proposal}
+          routeProposal={routeProposal}
           suggestions={suggestions}
           profile={profile}
           setProfile={setTestProfile}

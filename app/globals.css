@@ -1565,8 +1565,11 @@ h1 {
   .quick-prompts button { min-height: 40px; }
   .place-review-actions button,
   .place-review-actions a,
-  .place-reviews-sources a { min-height: 36px; }
+  .place-reviews-sources a { min-height: 40px; }
   .proposal-alternatives-toggle { min-height: 40px; }
+  [data-slot="sheet-close"] { top: 8px !important; right: 8px !important; width: 40px; height: 40px; }
+  /* The author's name links to their profile: taller to tap, same place on the page. */
+  .place-review-who > a { padding-block: 11px; margin-block: -11px; }
   /* Controls that must keep their compact look get an invisible, finger-sized touch area. */
   .drag-handle-button,
   .context-button { position: relative; }
