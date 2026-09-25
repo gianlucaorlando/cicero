@@ -1118,6 +1118,17 @@ h1 {
   .map-stage.has-candidates:not(.has-route) + .conversation { height: calc(42svh + 20px); min-height: 0; }
   .map-stage.has-route .map-search-hint,
   .map-stage.has-candidates .map-search-hint { display: none; }
+  /* A yes/no waiting for an answer gets half the screen, route or not. */
+  .deciding .map-stage.has-route,
+  .deciding .map-stage.has-candidates { height: 52svh; }
+  .deciding .map-stage.has-route + .conversation,
+  .deciding .map-stage.has-candidates + .conversation { height: calc(48svh + 20px); }
+  /* Once the trip is under way the big welcome title gives its lines back to the chat. */
+  .map-stage.has-route + .conversation h1,
+  .map-stage.has-candidates + .conversation h1 { display: none; }
+  .map-stage.has-route + .conversation .conversation-head,
+  .map-stage.has-candidates + .conversation .conversation-head { align-items: center; }
+  .route-proposal-list button { min-height: 42px; }
   .map-collapsed .map-stage { height: 135px; min-height: 135px; }
   .map-collapsed .map-canvas { opacity: .66; }
   .map-collapsed .conversation { height: calc(100svh - 115px); }
@@ -1536,3 +1547,29 @@ h1 {
 .place-reviews-sources { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 .place-reviews-sources a { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; color: #a34728; font-size: 12.5px; font-weight: 650; text-decoration: none; }
 .place-reviews-sources a svg { width: 13px; height: 13px; }
+
+/*
+ * Fingers, not pointers. On touch screens every button is at least 40px tall
+ * (the small ones are 28-32px, fine for a mouse) and the answers that move the
+ * trip forward (yes / another / add / details) reach the 44px Apple and Google
+ * ask for. min-height wins over the fixed heights of the button sizes.
+ */
+@media (pointer: coarse) {
+  [data-slot="button"] { min-width: 40px; min-height: 40px; }
+  .proposal-actions [data-slot="button"],
+  .place-popup-actions [data-slot="button"],
+  .place-sheet-actions [data-slot="button"] { min-height: 44px; padding-inline: 14px; font-size: 14px; }
+  .place-popup-shell .maplibregl-popup-close-button { top: 0; right: 0; width: 40px; height: 40px; }
+  .stop-remove { width: 40px !important; height: 40px !important; min-height: 40px !important; margin: -7px -6px 0 2px; }
+  .itinerary-card li { grid-template-columns: 38px 24px minmax(0, 1fr) 40px; }
+  .quick-prompts button { min-height: 40px; }
+  .place-review-actions button,
+  .place-review-actions a,
+  .place-reviews-sources a { min-height: 36px; }
+  .proposal-alternatives-toggle { min-height: 40px; }
+  /* Controls that must keep their compact look get an invisible, finger-sized touch area. */
+  .drag-handle-button,
+  .context-button { position: relative; }
+  .drag-handle-button::after { position: absolute; inset: -12px -40px; content: ''; }
+  .context-button::after { position: absolute; inset: -6px -2px; content: ''; }
+}

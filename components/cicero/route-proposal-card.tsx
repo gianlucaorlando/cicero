@@ -54,7 +54,7 @@ export function RouteProposalCard({ route, firstNumber, disabled, onAccept, onDe
 
       <div className="proposal-actions">
         <Button type="button" size="sm" onClick={onAccept} disabled={disabled}>
-          {disabled ? <LocateFixed className="spin" /> : <Check />} Sì, approvo il percorso
+          {disabled ? <LocateFixed className="spin" /> : <Check />} Sì, approvo
         </Button>
         <Button type="button" size="sm" variant="outline" onClick={onDecline} disabled={disabled}>
           <X /> No, grazie

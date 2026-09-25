@@ -385,7 +385,8 @@ export default function Home() {
   }
 
   return (
-    <main className={`app-shell ${mapOpen ? '' : 'map-collapsed'}`}>
+    // A pending yes/no (a proposal or a walk) gets half the phone: its card and buttons must fit.
+    <main className={`app-shell ${mapOpen ? '' : 'map-collapsed'} ${proposal || routeProposal ? 'deciding' : ''}`}>
       <MapStage
         coords={coords}
         onMovePin={location.movePin}

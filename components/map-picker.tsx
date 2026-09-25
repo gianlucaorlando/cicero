@@ -55,6 +55,24 @@ function popupOffset(lift: number) {
   };
 }
 
+/**
+ * The strips of the map covered by the controls: the top bar with search and
+ * chips, the banner at the bottom. Framing keeps pins out of them, and so
+ * does the choice of which points of interest to draw.
+ */
+function overlayInsets(height: number) {
+  return {
+    top: Math.min(180, Math.max(128, Math.round(height * 0.34))),
+    // Clears the route banner at the bottom, so the last pin is never half under it.
+    bottom: Math.min(130, Math.max(100, Math.round(height * 0.18))),
+  };
+}
+
+/** Pins this close to the side edges are hard to tap and half cut off. */
+const SIDE_INSET_PX = 14;
+/** Half a point-of-interest disc plus a hair: a pin centred in the clear area must not spill under a control. */
+const PIN_RADIUS_PX = 20;
+
 function routeFeature(points: Array<[number, number]>) {
   return {
     type: 'FeatureCollection' as const,
@@ -257,15 +275,9 @@ export function MapPicker({
 
     const bounds = new maplibre.LngLatBounds();
     fitPoints.forEach((point) => bounds.extend(point));
-    const height = map.getContainer().clientHeight;
+    const insets = overlayInsets(map.getContainer().clientHeight);
     map.fitBounds(bounds, {
-      padding: {
-        top: Math.min(180, Math.max(128, Math.round(height * 0.34))),
-        right: 54,
-        // Clears the route banner at the bottom, so the last pin is never half under it.
-        bottom: Math.min(130, Math.max(100, Math.round(height * 0.18))),
-        left: 54,
-      },
+      padding: { top: insets.top, right: 54, bottom: insets.bottom, left: 54 },
       maxZoom: 15.5,
       duration: 650,
     });
@@ -484,14 +496,19 @@ export function MapPicker({
       const emitViewport = () => {
         const bounds = map.getBounds();
         const center = map.getCenter();
-        const container = map.getContainer();
+        const { clientWidth: width, clientHeight: height } = map.getContainer();
+        // Places are fetched for the whole map, but drawn only where nothing covers them.
+        const insets = overlayInsets(height);
+        const margin = SIDE_INSET_PX + PIN_RADIUS_PX;
+        const northWest = map.unproject([margin, insets.top + PIN_RADIUS_PX]);
+        const southEast = map.unproject([width - margin, height - insets.bottom - PIN_RADIUS_PX]);
         onViewportChangeRef.current({
           center: { lat: center.lat, lng: center.lng },
           radiusMeters: distanceMeters({ lat: center.lat, lng: center.lng }, { lat: bounds.getNorth(), lng: bounds.getEast() }),
           zoom: map.getZoom(),
-          bounds: { north: bounds.getNorth(), south: bounds.getSouth(), east: bounds.getEast(), west: bounds.getWest() },
-          widthPx: container.clientWidth,
-          heightPx: container.clientHeight,
+          bounds: { north: northWest.lat, south: southEast.lat, east: southEast.lng, west: northWest.lng },
+          widthPx: Math.max(0, width - 2 * margin),
+          heightPx: Math.max(0, height - insets.top - insets.bottom - 2 * PIN_RADIUS_PX),
         });
       };
       map.on('moveend', emitViewport);
