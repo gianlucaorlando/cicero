@@ -531,6 +531,9 @@ export class AgentSession {
     if (!removed.length) return { isError: true, content: 'Nessuna tappa corrisponde agli id indicati.' };
     this.itinerary = this.itinerary.filter((stop) => !ids.includes(stop.id));
     this.actions.push({ type: 'remove_stops', stopIds: removed.map((stop) => stop.id) });
+    // The walk started from a stop that is gone: it goes too (the client drops it the same way).
+    const walk = this.routeProposal;
+    if (walk && !this.itinerary.some((stop) => (stop.placeId || stop.id) === walk.anchor.id)) this.routeProposal = null;
     return { content: `Rimosse: ${removed.map((stop) => stop.title).join(', ')}. Restano ${this.itinerary.length} tappe.` };
   }
 

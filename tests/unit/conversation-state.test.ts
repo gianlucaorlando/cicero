@@ -150,3 +150,17 @@ describe('walk proposals', () => {
     expect(next.routeProposal).toEqual(walk);
   });
 });
+
+describe('a walk without its monument', () => {
+  const walk = { anchor: { id: 'a', name: 'Galleria', lat: 41.9, lng: 12.48 }, stops: [candidate('b'), candidate('c')], distanceMeters: 500 };
+  const withWalk = { ...emptyPlan, itinerary: [stop('x'), stop('a')], routeProposal: walk };
+
+  it('goes when the monument it starts from is removed', () => {
+    expect(applyActions(withWalk, [{ type: 'remove_stops', stopIds: ['a'] }]).routeProposal).toBeNull();
+    expect(applyActions(withWalk, [{ type: 'set_itinerary', stops: [stop('x')] }]).routeProposal).toBeNull();
+  });
+
+  it('stays when another stop is removed', () => {
+    expect(applyActions(withWalk, [{ type: 'remove_stops', stopIds: ['x'] }]).routeProposal).toEqual(walk);
+  });
+});

@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from 'react';
 
 import { api, ApiError } from '@/lib/api';
-import { applyActions, emptyPlan, restoreStop as restoreInItinerary, type PlanState, type StopRemoval } from '@/lib/conversation-state';
+import { applyActions, emptyPlan, restoreStop as restoreInItinerary, withoutOrphanWalk, type PlanState, type StopRemoval } from '@/lib/conversation-state';
 import type { ChatContext, ChatMessage, ChatResponse, ChatRole, ProfilePatch, Stop } from '@/lib/types';
 
 export type ChatMode = 'unknown' | 'ready' | 'missing' | 'error';
@@ -117,7 +117,7 @@ export function useConversation(onProfilePatch: (patch: ProfilePatch) => void) {
   }, [send, started]);
 
   const removeStop = useCallback((stopId: string) => {
-    setPlan((current) => ({ ...current, itinerary: current.itinerary.filter((stop) => stop.id !== stopId) }));
+    setPlan((current) => withoutOrphanWalk({ ...current, itinerary: current.itinerary.filter((stop) => stop.id !== stopId) }));
   }, []);
 
   const restoreStop = useCallback((removal: StopRemoval) => {

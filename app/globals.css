@@ -1287,6 +1287,8 @@ h1 {
   cursor: pointer;
 }
 .proposal-alternatives-toggle svg { width: 14px; height: 14px; }
+/* A text toggle is still a control: at least 28px tall with a mouse (24px is the WCAG floor), 40px on touch. */
+.proposal-alternatives-toggle { min-height: 28px; }
 
 /* Tapping the proposal opens its detail sheet */
 .proposal-open {

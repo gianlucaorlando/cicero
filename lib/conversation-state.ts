@@ -32,6 +32,13 @@ export function restoreStop(itinerary: Stop[], removal: StopRemoval): Stop[] {
   return next;
 }
 
+/** A walk starts from the monument just chosen: once that stop is gone, the walk goes with it. */
+export function withoutOrphanWalk(state: PlanState): PlanState {
+  const walk = state.routeProposal;
+  if (!walk || state.itinerary.some((stop) => (stop.placeId || stop.id) === walk.anchor.id)) return state;
+  return { ...state, routeProposal: null };
+}
+
 /**
  * Applies agent actions in order. A proposal or a search replaces what was
  * shown before; adding stops consumes it. Only one question is pending at a
@@ -70,11 +77,11 @@ export function applyActions(state: PlanState, actions: ChatAction[]): PlanState
         };
       }
       case 'remove_stops':
-        return { ...current, itinerary: current.itinerary.filter((stop) => !action.stopIds.includes(stop.id)) };
+        return withoutOrphanWalk({ ...current, itinerary: current.itinerary.filter((stop) => !action.stopIds.includes(stop.id)) });
       case 'shift_times':
         return { ...current, itinerary: current.itinerary.map((stop) => ({ ...stop, time: shiftTime(stop.time, action.minutes) })) };
       case 'set_itinerary':
-        return { ...current, itinerary: action.stops };
+        return withoutOrphanWalk({ ...current, itinerary: action.stops });
       default:
         return current;
     }

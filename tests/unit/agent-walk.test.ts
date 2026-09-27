@@ -196,3 +196,23 @@ describe('walks and a plan built by the user', () => {
     expect(findSightsNearby).not.toHaveBeenCalled();
   });
 });
+
+describe('removing the monument a walk starts from', () => {
+  it('drops the walk from the context of the rest of the turn', async () => {
+    const pending: RouteProposal = {
+      anchor: { id: PANTHEON.id, name: PANTHEON.name, lat: PANTHEON.lat, lng: PANTHEON.lng },
+      stops: [MINERVA, NAVONA],
+      distanceMeters: 450,
+    };
+    const session = new AgentSession(context({
+      routeProposal: pending,
+      discovery: [{ ...ROSETTA, category: 'food' }],
+      itinerary: [{ id: PANTHEON.id, placeId: PANTHEON.id, time: '10:15', title: PANTHEON.name, detail: '', kind: 'place', lat: PANTHEON.lat, lng: PANTHEON.lng, primaryType: PANTHEON.primaryType }],
+    }));
+    await session.execute('remove_stops', { stop_ids: [PANTHEON.id] });
+    // With the walk gone, a stop of it is no longer proposable as part of the walk, but any place on the map is.
+    const next = await session.execute('propose_stop', { place: ROSETTA.id, reason: 'shopping poi pranzo' });
+    expect(next.isError).toBeUndefined();
+    expect(session.actions.map((action) => action.type)).toEqual(['remove_stops', 'propose']);
+  });
+});

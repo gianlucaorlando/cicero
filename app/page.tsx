@@ -16,7 +16,7 @@ import { useDiscovery } from '@/hooks/use-discovery';
 import { useExplore } from '@/hooks/use-explore';
 import { relocationEvent, useConversation, type ChatMode, type TurnContext } from '@/hooks/use-conversation';
 import { useLocation, type Relocation } from '@/hooks/use-location';
-import { useProfileSync } from '@/hooks/use-profile-sync';
+import { applyProfilePatch, useProfileSync } from '@/hooks/use-profile-sync';
 import { useSavedRoutes } from '@/hooks/use-saved-routes';
 import { useSpeechInput } from '@/hooks/use-speech-input';
 import { useWeather } from '@/hooks/use-weather';
@@ -25,7 +25,7 @@ import { mergePlaces, selectVisiblePins, type Viewport } from '@/lib/explore';
 import { candidateLetter, localTimeLabel, pluralStops } from '@/lib/format';
 import { itinerarySignature } from '@/lib/geo';
 import type { PreferenceCategory, Profile } from '@/lib/profile';
-import type { DiscoveryPlace, PlaceCandidate, SavedRoute } from '@/lib/types';
+import type { DiscoveryPlace, PlaceCandidate, ProfilePatch, SavedRoute } from '@/lib/types';
 
 function hideSplash() {
   const splash = document.getElementById('app-splash');
@@ -50,7 +50,20 @@ const footerNotes: Record<ChatMode, string> = {
 export default function Home() {
   const auth = useAuth0();
   const profileSync = useProfileSync({ authStatus: auth.status, getAccessToken: auth.getAccessToken });
-  const conversation = useConversation(profileSync.applyPatch);
+  /** While the test panel runs it works on this profile, so the real one is never written. */
+  const [testProfile, setTestProfile] = useState<Profile | null>(null);
+  const testProfileRef = useRef<Profile | null>(null);
+  useEffect(() => {
+    testProfileRef.current = testProfile;
+  }, [testProfile]);
+  const { applyPatch: applySyncedPatch } = profileSync;
+  // What Cicerone learns goes to the throwaway profile during a GUI test run: sent to the real one,
+  // the run could never see it, and a signed-in tester would find "niente pesce" in their account.
+  const applyProfilePatchFromChat = useCallback((patch: ProfilePatch) => {
+    if (testProfileRef.current) setTestProfile((current) => (current ? applyProfilePatch(current, patch) : current));
+    else applySyncedPatch(patch);
+  }, [applySyncedPatch]);
+  const conversation = useConversation(applyProfilePatchFromChat);
   // The relocation handler needs location state that does not exist yet at this point: route it through a ref.
   const relocateRef = useRef<(relocation: Relocation) => void>(() => undefined);
   const onRelocated = useCallback((relocation: Relocation) => relocateRef.current(relocation), []);
@@ -76,8 +89,6 @@ export default function Home() {
   const [detailPlace, setDetailPlace] = useState<PlaceCandidate | null>(null);
   /** Place whose compact popup is open on the map, after a tap on its pin. */
   const [popupPlaceId, setPopupPlaceId] = useState<string | null>(null);
-  /** While the test panel runs it works on this profile, so the real one is never written. */
-  const [testProfile, setTestProfile] = useState<Profile | null>(null);
   /** The stop the user just took out by hand, kept for a few seconds so a mistaken tap can be undone. */
   const [removal, setRemoval] = useState<StopRemoval | null>(null);
 
