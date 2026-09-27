@@ -40,6 +40,12 @@ const SETTLE_MS = 900;
 const SESSION_RESET_MS = 400;
 /** The run survives a reload of the page (HMR, a crash): it is kept for the tab's lifetime. */
 const STORAGE_KEY = 'cicerone-test-run-v1';
+/**
+ * Turns in a row without an answer that mean the server, not the scenario, is
+ * failing (no credit, key revoked, model down): the run stops instead of
+ * marking every remaining step as failed.
+ */
+const MAX_SILENT_TURNS = 2;
 
 function settle(ms = SETTLE_MS) {
   return new Promise<void>((resolve) => { setTimeout(resolve, ms); });
@@ -174,6 +180,8 @@ export function TestPanel({ ask, start, itinerary, candidates, proposal, routePr
   const [copied, setCopied] = useState(false);
   /** A run cut short by a reload: its results are shown, with the step that was running marked. */
   const [interrupted, setInterrupted] = useState(false);
+  /** Why the last run stopped by itself, when the server stopped answering. */
+  const [halted, setHalted] = useState<string | null>(null);
   const latest = useRef({ ask, start, itinerary, candidates, proposal, routeProposal, suggestions, profile });
   const cancelled = useRef(false);
 
@@ -236,7 +244,7 @@ export function TestPanel({ ask, start, itinerary, candidates, proposal, routePr
     const failed = step.checks
       .filter((check) => !check.pass(snapshot, previous))
       .map((check) => (check.detail ? `${check.label} — ${check.detail(snapshot, previous)}` : check.label));
-    if (!response) failed.unshift('Nessuna risposta dal server');
+    if (!response) failed.unshift(`Nessuna risposta dal server — in chat: “${snapshot.dom.lastAssistantText.slice(0, 160)}”`);
     return { snapshot, failed };
   }
 
@@ -247,7 +255,9 @@ export function TestPanel({ ask, start, itinerary, candidates, proposal, routePr
     setRunning(true);
     setCopied(false);
     setInterrupted(false);
+    setHalted(null);
     setResults(emptyResults(chosen));
+    let silentTurns = 0;
 
     try {
       for (const [scenarioIndex, scenario] of chosen.entries()) {
@@ -266,6 +276,11 @@ export function TestPanel({ ask, start, itinerary, candidates, proposal, routePr
             try {
               const { snapshot, failed } = await runStep(step, previous);
               previous = snapshot;
+              silentTurns = snapshot.reply ? 0 : silentTurns + 1;
+              if (silentTurns >= MAX_SILENT_TURNS) {
+                setHalted(`Il server non risponde da ${silentTurns} turni di fila, quindi il problema non è lo scenario: esecuzione fermata. In chat: “${snapshot.dom.lastAssistantText.slice(0, 160)}”. Controlla il log del server (credito, chiave, modello).`);
+                cancelled.current = true;
+              }
               updateStep(scenarioIndex, sessionIndex, stepIndex, {
                 status: failed.length ? 'fail' : 'pass',
                 durationMs: snapshot.durationMs,
@@ -307,6 +322,7 @@ export function TestPanel({ ask, start, itinerary, candidates, proposal, routePr
         <Button type="button" variant="ghost" size="icon" aria-label="Chiudi il pannello test" onClick={onClose} disabled={running}><X /></Button>
       </header>
 
+      {halted && <p className="test-panel-note" role="alert">{halted}</p>}
       {interrupted && (
         <p className="test-panel-note" role="alert">L’ultima esecuzione si è interrotta perché la pagina si è ricaricata: qui sotto i risultati fino a quel punto.</p>
       )}
