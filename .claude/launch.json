@@ -4,8 +4,26 @@
     {
       "name": "cicero-dev",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["-y", "-p", "node@22", "-c", "npm run dev"],
+      "runtimeArgs": [
+        "-y",
+        "-p",
+        "node@22",
+        "-c",
+        "npm run dev"
+      ],
       "port": 3000
+    },
+    {
+      "name": "cicerone-node-prod",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "-y",
+        "-p",
+        "node@22",
+        "-c",
+        "PORT=3200 CICERO_SQLITE_PATH=data/local-node.sqlite npm run start:node"
+      ],
+      "port": 3200
     }
   ]
 }

@@ -88,8 +88,15 @@ export async function enforceRateLimits(rules: RateLimitRule[], now = Date.now()
   return { allowed: true, retryAfterSeconds: 0 };
 }
 
+/**
+ * Who is asking, for per-client budgets: the signed-in user, else the client IP.
+ * Cloudflare gives the IP in its own header. Behind a plain proxy (Render) it
+ * comes as X-Forwarded-For, where the client can prepend anything and the
+ * proxy appends the address it saw: only the last entry can be trusted.
+ */
 export function clientKey(request: Request, userId?: string | null) {
-  return userId || request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'anonymous';
+  const forwarded = request.headers.get('x-forwarded-for')?.split(',').map((part) => part.trim()).filter(Boolean).at(-1);
+  return userId || request.headers.get('cf-connecting-ip') || forwarded || 'anonymous';
 }
 
 function positiveInt(value: string | undefined, fallback: number) {

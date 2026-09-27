@@ -1,0 +1,42 @@
+# Cicerone on Render: the Node build of the app (CICERO_PLATFORM=node), with
+# D1 replaced by a SQLite file on a persistent disk. See docs/DEPLOY-RENDER.md.
+services:
+  - type: web
+    name: cicerone
+    runtime: node
+    # A persistent disk needs a paid instance. On the free plan remove `disk`:
+    # the app works, but rate-limit counters, caches and server-side profiles
+    # reset at every restart or deploy.
+    plan: 0.5c-512mb
+    region: frankfurt
+    # Dev dependencies (Vite, vinext) are needed to build even with NODE_ENV=production.
+    buildCommand: npm ci --include=dev && npm run build:node
+    startCommand: npm run start:node
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    disk:
+      name: cicerone-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: CICERO_PLATFORM
+        value: node
+      - key: NODE_ENV
+        value: production
+      - key: CICERO_SQLITE_PATH
+        value: /var/data/cicerone.sqlite
+      # Secrets: set them in the Render dashboard, never in this file.
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Optional: a Tripadvisor Terra key adds Tripadvisor reviews to the place sheet.
+      - key: TRIPADVISOR_API_KEY
+        sync: false
+      # Optional: Auth0 for sign-in, synced profiles and saved routes on the server.
+      - key: AUTH0_DOMAIN
+        sync: false
+      - key: AUTH0_CLIENT_ID
+        sync: false
+      - key: AUTH0_AUDIENCE
+        sync: false

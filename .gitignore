@@ -40,3 +40,6 @@ next-env.d.ts
 
 # typescript
 *.tsbuildinfo
+
+# Node target (Render): SQLite stand-in for D1
+/data/

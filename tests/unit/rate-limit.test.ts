@@ -149,4 +149,12 @@ describe('clientKey', () => {
     expect(clientKey(request)).toBe('1.2.3.4');
     expect(clientKey(new Request('https://example.test'))).toBe('anonymous');
   });
+
+  it('behind a plain proxy trusts only the address the proxy appended', () => {
+    const spoofed = new Request('https://example.test', { headers: { 'x-forwarded-for': '6.6.6.6, 203.0.113.9' } });
+    expect(clientKey(spoofed)).toBe('203.0.113.9');
+    expect(clientKey(new Request('https://example.test', { headers: { 'x-forwarded-for': ' 198.51.100.4 ' } }))).toBe('198.51.100.4');
+    // Cloudflare's own header wins where it exists.
+    expect(clientKey(new Request('https://example.test', { headers: { 'x-forwarded-for': '9.9.9.9', 'cf-connecting-ip': '1.2.3.4' } }))).toBe('1.2.3.4');
+  });
 });
