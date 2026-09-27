@@ -37,6 +37,8 @@ export type StepSnapshot = {
 export type Check = {
   label: string;
   pass: (snapshot: StepSnapshot, previous: StepSnapshot | null) => boolean;
+  /** What was actually seen, appended to the label when the check fails. */
+  detail?: (snapshot: StepSnapshot, previous: StepSnapshot | null) => string;
 };
 
 /** A step either says something as the user, or (with `start`) triggers Cicerone's automatic opening move. */
@@ -106,6 +108,7 @@ const walkShown: Check = {
   label: 'Un giro tra i monumenti vicini è proposto (scheda e pin tratteggiati)',
   pass: (s) => s.routeProposal !== null && s.routeProposal.stops.length >= 2 && s.dom.routeProposalCard
     && s.dom.previewMarkers === s.routeProposal.stops.length && s.proposal === null && !s.dom.proposalCard,
+  detail: (s) => `giro ${s.routeProposal ? `di ${s.routeProposal.stops.length} tappe` : 'assente'}, scheda ${s.dom.routeProposalCard ? 'sì' : 'no'}, pin tratteggiati ${s.dom.previewMarkers}, proposta singola ${s.proposal ? 'presente' : 'assente'}`,
 };
 
 const walkApproved: Check = {
@@ -154,6 +157,7 @@ const decisionReachable: Check = {
 const fingerSizedTargets: Check = {
   label: 'Pulsanti e link abbastanza grandi per il dispositivo',
   pass: (s) => s.dom.smallTargets.length === 0,
+  detail: (s) => s.dom.smallTargets.join(', '),
 };
 
 const noVisibleUserMessage: Check = {
@@ -174,6 +178,7 @@ const stopsAtLeast = (count: number): Check => ({
 const stopsEqual = (count: number): Check => ({
   label: `Esattamente ${count} tappe nell'itinerario`,
   pass: (s) => s.itinerary.length === count,
+  detail: (s) => `ce ne sono ${s.itinerary.length}`,
 });
 
 const stopsGrewBy = (count: number): Check => ({
@@ -222,6 +227,9 @@ const guiMatchesState: Check = {
     && s.dom.candidateMarkers === (s.proposal ? 1 : s.candidates.length)
     && s.dom.previewMarkers === (s.routeProposal?.stops.length ?? 0)
     && s.dom.routeProposalCard === (s.routeProposal !== null),
+  detail: (s) => `pin tappe ${s.dom.stopMarkers}/${s.itinerary.length}, righe ${s.dom.itineraryRows}, `
+    + `pin proposta ${s.dom.candidateMarkers}/${s.proposal ? 1 : s.candidates.length}, `
+    + `pin giro ${s.dom.previewMarkers}/${s.routeProposal?.stops.length ?? 0}`,
 };
 
 const profileFlag = (key: 'slowPace' | 'avoidQueues' | 'noFish' | 'markets', label: string): Check => ({

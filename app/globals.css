@@ -1559,6 +1559,7 @@ h1 {
   .proposal-actions [data-slot="button"],
   .place-popup-actions [data-slot="button"],
   .place-sheet-actions [data-slot="button"] { min-height: 44px; padding-inline: 14px; font-size: 14px; }
+  .proposal-actions .proposal-link { width: 44px; height: 44px; }
   .place-popup-shell .maplibregl-popup-close-button { top: 0; right: 0; width: 40px; height: 40px; }
   .stop-remove { width: 40px !important; height: 40px !important; min-height: 40px !important; margin: -7px -6px 0 2px; }
   .itinerary-card li { grid-template-columns: 38px 24px minmax(0, 1fr) 40px; }
@@ -1568,8 +1569,9 @@ h1 {
   .place-reviews-sources a { min-height: 40px; }
   .proposal-alternatives-toggle { min-height: 40px; }
   [data-slot="sheet-close"] { top: 8px !important; right: 8px !important; width: 40px; height: 40px; }
-  /* The author's name links to their profile: taller to tap, same place on the page. */
+  /* Links set in text (a review's author, a stop's name) get taller to tap, in the same place on the page. */
   .place-review-who > a { padding-block: 11px; margin-block: -11px; }
+  .itinerary-card li > div > a { padding-block: 8px; margin-block: -8px; }
   /* Controls that must keep their compact look get an invisible, finger-sized touch area. */
   .drag-handle-button,
   .context-button { position: relative; }

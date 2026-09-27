@@ -233,7 +233,9 @@ export function TestPanel({ ask, start, itinerary, candidates, proposal, routePr
       dom: readDom(),
       durationMs: Math.round(performance.now() - started),
     };
-    const failed = step.checks.filter((check) => !check.pass(snapshot, previous)).map((check) => check.label);
+    const failed = step.checks
+      .filter((check) => !check.pass(snapshot, previous))
+      .map((check) => (check.detail ? `${check.label} — ${check.detail(snapshot, previous)}` : check.label));
     if (!response) failed.unshift('Nessuna risposta dal server');
     return { snapshot, failed };
   }
